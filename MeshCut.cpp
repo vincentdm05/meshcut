@@ -203,7 +203,7 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle _edge, TriMesh& _mesh) {
     TriMesh::VertexHandle vertexhTop = _mesh.from_vertex_handle(halfedgehIn);
     TriMesh::VertexHandle vertexhDown = _mesh.to_vertex_handle(halfedgehIn);
 
-    /// Create new edge and copy all properties
+    /// Create new edge, copy all properties and adjust pointers
     // Outward new halfedge
     TriMesh::HalfedgeHandle newHalfedgeOut = _mesh.new_edge(vertexhDown, vertexhTop);
     _mesh.copy_all_properties(halfedgehIn, newHalfedgeOut, true);
@@ -220,7 +220,7 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle _edge, TriMesh& _mesh) {
     _mesh.set_face_handle(newHalfedgeIn, faceh_left);
     _mesh.set_next_halfedge_handle(newHalfedgeIn, leftUpHalfedgeToNew);
     _mesh.set_next_halfedge_handle(leftDownHalfedgeToNew, newHalfedgeIn);
-    if (_mesh.halfedge_handle(faceh_left).idx() == halfedgehOut.idx()) {
+    if (_mesh.halfedge_handle(faceh_left) == halfedgehOut) {
         _mesh.set_halfedge_handle(faceh_left, newHalfedgeIn);
     }
     _mesh.set_halfedge_handle(vertexhDown, halfedgehOut);
