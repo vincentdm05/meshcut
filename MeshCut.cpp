@@ -117,7 +117,7 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
                 // Cut edge
                 cutPrimitive(edge, mesh);
 
-                emit log(LOGOUT, "Picked edge " + QString::number(edge.idx()));
+                emit log(LOGOUT, "Cut edge " + QString::number(edge.idx()));
                 emit updatedObject(object->id(), UPDATE_TOPOLOGY);
                 emit updateView();
             }
@@ -158,11 +158,11 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
 /** \brief Cut along edge
  *
  * Look at the surrounding topology of the edge and cut along it.
- * In this schematic we show how the middle edge relates to its
- * surrounding.
+ * This schematic shows how the middle edge relates to its
+ * surroundings.
  *
- *              top vertex
- *                  x
+ *              up vertex
+ *        ----------x----------
  *                 /|\
  *               /  |  \
  *             /    |    \
@@ -188,51 +188,45 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle _edge, TriMesh& _mesh) {
 
     /// Get relevant neighbouring components
     // Original edge's halfedges
-    TriMesh::HalfedgeHandle halfedgehIn = _mesh.halfedge_handle(_edge, 0);
-    TriMesh::HalfedgeHandle halfedgehOut = _mesh.halfedge_handle(_edge, 1);
+    TriMesh::HalfedgeHandle heh_in = _mesh.halfedge_handle(_edge, 0);
+    TriMesh::HalfedgeHandle heh_out = _mesh.halfedge_handle(_edge, 1);
 
     // Left face halfedges
-    TriMesh::HalfedgeHandle leftUpHalfedgeToNew = _mesh.next_halfedge_handle(halfedgehOut);
-    TriMesh::HalfedgeHandle leftDownHalfedgeToNew = _mesh.next_halfedge_handle(leftUpHalfedgeToNew);
+    TriMesh::HalfedgeHandle left_up_heh_to_new = _mesh.next_halfedge_handle(heh_out);
+    TriMesh::HalfedgeHandle left_down_heh_to_new = _mesh.next_halfedge_handle(left_up_heh_to_new);
 
-    // Surrounding faces
-    TriMesh::FaceHandle faceh_right = _mesh.face_handle(halfedgehIn);
-    TriMesh::FaceHandle faceh_left = _mesh.face_handle(halfedgehOut);
+    // Face adjacent to new edge
+    TriMesh::FaceHandle fh_left = _mesh.face_handle(heh_out);
 
     // Edge endpoints
-    TriMesh::VertexHandle vertexhTop = _mesh.from_vertex_handle(halfedgehIn);
-    TriMesh::VertexHandle vertexhDown = _mesh.to_vertex_handle(halfedgehIn);
+    TriMesh::VertexHandle vh_up = _mesh.from_vertex_handle(heh_in);
+    TriMesh::VertexHandle vh_down = _mesh.to_vertex_handle(heh_in);
 
     /// Create new edge, copy all properties and adjust pointers
     // Outward new halfedge
-    TriMesh::HalfedgeHandle newHalfedgeOut = _mesh.new_edge(vertexhDown, vertexhTop);
-    _mesh.copy_all_properties(halfedgehIn, newHalfedgeOut, true);
-    _mesh.set_vertex_handle(newHalfedgeOut, vertexhDown);
-    _mesh.set_next_halfedge_handle(newHalfedgeOut, halfedgehOut);
-    _mesh.set_next_halfedge_handle(halfedgehOut, newHalfedgeOut);
+    TriMesh::HalfedgeHandle new_heh_out = _mesh.new_edge(vh_down, vh_up);
+    _mesh.copy_all_properties(heh_in, new_heh_out, true);
+    _mesh.set_vertex_handle(new_heh_out, vh_down);
+    _mesh.set_next_halfedge_handle(new_heh_out, heh_out);
+    _mesh.set_next_halfedge_handle(heh_out, new_heh_out);
     // no need to set_prev_halfedge_handle as it is done in set_next_halfedge_handle
-    _mesh.set_halfedge_handle(vertexhTop, newHalfedgeOut);
+    _mesh.set_halfedge_handle(vh_up, new_heh_out);
 
     // Inward new halfedge
-    TriMesh::HalfedgeHandle newHalfedgeIn = _mesh.opposite_halfedge_handle(newHalfedgeOut);
-    _mesh.copy_all_properties(halfedgehOut, newHalfedgeOut, true);
-    _mesh.set_vertex_handle(newHalfedgeIn, vertexhTop);
-    _mesh.set_face_handle(newHalfedgeIn, faceh_left);
-    _mesh.set_next_halfedge_handle(newHalfedgeIn, leftUpHalfedgeToNew);
-    _mesh.set_next_halfedge_handle(leftDownHalfedgeToNew, newHalfedgeIn);
-    if (_mesh.halfedge_handle(faceh_left) == halfedgehOut) {
-        _mesh.set_halfedge_handle(faceh_left, newHalfedgeIn);
+    TriMesh::HalfedgeHandle new_heh_in = _mesh.opposite_halfedge_handle(new_heh_out);
+    _mesh.copy_all_properties(heh_out, new_heh_out, true);
+    _mesh.set_vertex_handle(new_heh_in, vh_up);
+    _mesh.set_face_handle(new_heh_in, fh_left);
+    _mesh.set_next_halfedge_handle(new_heh_in, left_up_heh_to_new);
+    _mesh.set_next_halfedge_handle(left_down_heh_to_new, new_heh_in);
+    if (_mesh.halfedge_handle(fh_left) == heh_out) {
+        _mesh.set_halfedge_handle(fh_left, new_heh_in);
     }
-    _mesh.set_halfedge_handle(vertexhDown, halfedgehOut);
+    _mesh.set_halfedge_handle(vh_down, heh_out);
 
     // Outward halfedges are now boundary
-    _mesh.set_boundary(newHalfedgeOut);
-    _mesh.set_boundary(halfedgehOut);
-
-    // New edge
-    TriMesh::EdgeHandle newEdge = _mesh.edge_handle(newHalfedgeOut);
-
-    emit log(LOGOUT, "Created edge " + QString::number(newEdge.idx()));
+    _mesh.set_boundary(new_heh_out);
+    _mesh.set_boundary(heh_out);
 
     //   if (_mesh.status(newEdge).selected()) {
     //       _mesh.status(newEdge).set_selected(false);
