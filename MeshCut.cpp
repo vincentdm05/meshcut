@@ -14,20 +14,6 @@ void MeshCut::pluginsInitialized()
 {
     QString iconPath = OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator();
 
-
-    // // Cutting toolbox
-    // QWidget* toolBox = new QWidget();
-
-    // QPushButton* cutButton = new QPushButton("&Cut", toolBox);
-
-    // QGridLayout* layout = new QGridLayout(toolBox);
-    // layout->addWidget(cutButton, 0, 0);
-
-    // connect(cutButton, SIGNAL(clicked()), this, SLOT(simpleCut()));
-
-    // emit addToolbox(tr("Mesh Cut"), toolBox);
-
-
     // Cutting toolbar
     emit addHiddenPickMode(EDGE_CUT_POPUP);
 
@@ -162,7 +148,7 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
  * surroundings.
  *
  *              up vertex
- *        ----------x----------
+ *                  x
  *                 /|\
  *               /  |  \
  *             /    |    \
@@ -180,72 +166,138 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
  * @param _edge The edge defining the cut
  * @param _mesh The mesh
  */
-void MeshCut::cutPrimitive(TriMesh::EdgeHandle _edge, TriMesh& _mesh) {
+void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
     // Already a hole there
-    if (_mesh.is_boundary(_edge)) {
+    if (mesh.is_boundary(edge)) {
         return;
     }
 
     /// Get relevant neighbouring components
     // Original edge's halfedges
-    TriMesh::HalfedgeHandle heh_in = _mesh.halfedge_handle(_edge, 0);
-    TriMesh::HalfedgeHandle heh_out = _mesh.halfedge_handle(_edge, 1);
+    TriMesh::HalfedgeHandle heh_in = mesh.halfedge_handle(edge, 0);
+    TriMesh::HalfedgeHandle heh_out = mesh.halfedge_handle(edge, 1);
 
     // Left face halfedges
-    TriMesh::HalfedgeHandle left_up_heh_to_new = _mesh.next_halfedge_handle(heh_out);
-    TriMesh::HalfedgeHandle left_down_heh_to_new = _mesh.next_halfedge_handle(left_up_heh_to_new);
+    TriMesh::HalfedgeHandle left_up_heh_to_new = mesh.next_halfedge_handle(heh_out);
+    TriMesh::HalfedgeHandle left_down_heh_to_new = mesh.next_halfedge_handle(left_up_heh_to_new);
 
     // Face adjacent to new edge
-    TriMesh::FaceHandle fh_left = _mesh.face_handle(heh_out);
+    TriMesh::FaceHandle fh_left = mesh.face_handle(heh_out);
 
     // Edge endpoints
-    TriMesh::VertexHandle vh_up = _mesh.from_vertex_handle(heh_in);
-    TriMesh::VertexHandle vh_down = _mesh.to_vertex_handle(heh_in);
+    TriMesh::VertexHandle vh_up = mesh.from_vertex_handle(heh_in);
+    TriMesh::VertexHandle vh_down = mesh.to_vertex_handle(heh_in);
+
+    emit log(LOGOUT, " vh_up " + QString::number(vh_up.idx()) + " pos " + QString::number(mesh.point(vh_up)[0]) + " " + QString::number(mesh.point(vh_up)[1]) + " " + QString::number(mesh.point(vh_up)[2]));
+
 
     /// Create new edge, copy all properties and adjust pointers
     // Outward new halfedge
-    TriMesh::HalfedgeHandle new_heh_out = _mesh.new_edge(vh_down, vh_up);
-    _mesh.copy_all_properties(heh_in, new_heh_out, true);
-    _mesh.set_vertex_handle(new_heh_out, vh_down);
-    _mesh.set_next_halfedge_handle(new_heh_out, heh_out);
-    _mesh.set_next_halfedge_handle(heh_out, new_heh_out);
+    TriMesh::HalfedgeHandle new_heh_out = mesh.new_edge(vh_down, vh_up);
+    mesh.copy_all_properties(heh_in, new_heh_out, true);
+    mesh.set_vertex_handle(new_heh_out, vh_down);
+    mesh.set_next_halfedge_handle(new_heh_out, heh_out);
+    mesh.set_next_halfedge_handle(heh_out, new_heh_out);
     // no need to set_prev_halfedge_handle as it is done in set_next_halfedge_handle
-    _mesh.set_halfedge_handle(vh_up, new_heh_out);
+    mesh.set_halfedge_handle(vh_up, new_heh_out);
 
     // Inward new halfedge
-    TriMesh::HalfedgeHandle new_heh_in = _mesh.opposite_halfedge_handle(new_heh_out);
-    _mesh.copy_all_properties(heh_out, new_heh_out, true);
-    _mesh.set_vertex_handle(new_heh_in, vh_up);
-    _mesh.set_face_handle(new_heh_in, fh_left);
-    _mesh.set_next_halfedge_handle(new_heh_in, left_up_heh_to_new);
-    _mesh.set_next_halfedge_handle(left_down_heh_to_new, new_heh_in);
-    if (_mesh.halfedge_handle(fh_left) == heh_out) {
-        _mesh.set_halfedge_handle(fh_left, new_heh_in);
+    TriMesh::HalfedgeHandle new_heh_in = mesh.opposite_halfedge_handle(new_heh_out);
+    mesh.copy_all_properties(heh_out, new_heh_out, true);
+    mesh.set_vertex_handle(new_heh_in, vh_up);
+    mesh.set_face_handle(new_heh_in, fh_left);
+    mesh.set_next_halfedge_handle(new_heh_in, left_up_heh_to_new);
+    mesh.set_next_halfedge_handle(left_down_heh_to_new, new_heh_in);
+    if (mesh.halfedge_handle(fh_left) == heh_out) {
+        mesh.set_halfedge_handle(fh_left, new_heh_in);
     }
-    _mesh.set_halfedge_handle(vh_down, heh_out);
+    mesh.set_halfedge_handle(vh_down, heh_out);
 
     // Outward halfedges are now boundary
-    _mesh.set_boundary(new_heh_out);
-    _mesh.set_boundary(heh_out);
+    mesh.set_boundary(new_heh_out);
+    mesh.set_boundary(heh_out);
 
-    //   if (_mesh.status(newEdge).selected()) {
-    //       _mesh.status(newEdge).set_selected(false);
-    //   } else {
-    //       _mesh.status(newEdge).set_selected(true);
-    //   }
-    //   _mesh.status(vertexh1).set_selected(true);
+    // If there are neighbouring cuts, connect them
+    connectCuts(vh_up, mesh);
+    connectCuts(vh_down, mesh);
+}
 
-    //   _mesh.status(faceh_left).set_selected(true);
-    //   _mesh.status(faceh_right).set_selected(true);
+/** \brief Joins adjacent cuts
+ *
+ * If two adjacent cuts are detected, the edge will be split and the properties and pointers
+ * of connected components will be updated.
+ *
+ *                x          x
+ *                |> cut  </
+ *      left      |      /     right
+ *      side      |    /      side
+ *                |  /
+ *                |/
+ *     x----------x vh
+ *                |\
+ *                |  \
+ *                |    \
+ *                |      \
+ *                |> cut  <\
+ *                x          x
+ *
+ * @param vh The connecting vertex
+ */
+void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
+    const size_t _max_cuts = 2;
+    // Halfedges at cuts
+    TriMesh::HalfedgeHandle heh_cuts[2*_max_cuts];
+    // Halfedges on the left side of the cut
+    std::vector<TriMesh::HalfedgeHandle> left_halfedges;
+    bool left_side = true;
+    size_t cut = 0;
+
+    // Count cuts and store halfedges according to side
+    for (TriMesh::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
+        TriMesh::HalfedgeHandle heh = *vih_it;
+        if (mesh.is_boundary(heh) && cut < _max_cuts) {
+            heh_cuts[2*cut] = heh;
+            heh_cuts[2*cut+1] = mesh.next_halfedge_handle(heh);
+            ++cut;
+            left_side = !left_side;
+        } else if (left_side) {
+            left_halfedges.push_back(heh);
+        }
+    }
+
+    // Number of cuts must not exceed _max_cuts
+    if (cut > _max_cuts) {
+        emit log(LOGERR, "Topology error, a vertex is connected to " + QString::number(cut) + " cuts");
+    } else if (cut == _max_cuts) {
+        // Split vertex
+        TriMesh::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
+        mesh.copy_all_properties(vh, new_vh, true);
+
+        /// Update pointers; the new vertex will pick up left edges
+        // Left vertex boundary halfedges
+        mesh.set_next_halfedge_handle(heh_cuts[0], heh_cuts[3]);
+        mesh.set_halfedge_handle(new_vh, heh_cuts[3]);
+        mesh.set_vertex_handle(heh_cuts[0], new_vh);
+        // Other left halfedges
+        if (!left_halfedges.empty()) {
+            std::vector<TriMesh::HalfedgeHandle>::iterator heh_it = left_halfedges.begin();
+            for (; heh_it != left_halfedges.end(); ++heh_it) {
+                mesh.set_vertex_handle(*heh_it, new_vh);
+            }
+        }
+
+        // Right vertex
+        mesh.set_next_halfedge_handle(heh_cuts[2], heh_cuts[1]);
+        mesh.set_halfedge_handle(vh, heh_cuts[1]);
+        mesh.set_vertex_handle(heh_cuts[2], vh);
+        // No need to rewire right halfedges
+
+        emit log(LOGOUT, "Created new vertex " + QString::number(new_vh.idx()));
+    }
+    emit log(LOGOUT, "cuts " + QString::number(cut));
 
 }
 
-// /** \brief
-//  * 
-//  */
-// void MeshCut::simpleCut() {
-
-// }
 
 
 
