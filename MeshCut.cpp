@@ -227,6 +227,7 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
  * If two adjacent cuts are detected, the edge will be split and the properties and pointers
  * of connected components will be updated.
  *
+ *  Before:
  *                x          x
  *                |> cut  </
  *      left      |      /     right
@@ -240,6 +241,21 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
  *                |      \
  *                |> cut  <\
  *                x          x
+ *
+ *  After:
+ *                x             x
+ *                |           /
+ *      left      |>  cut  </     right
+ *      side      |       /      side
+ *                |     /
+ *                |   /
+ *     x----------x  x vh
+ *         new_vh |   \
+ *                |     \
+ *                |       \
+ *                |         \
+ *                |           \
+ *                x             x
  *
  * @param vh The connecting vertex
  */
