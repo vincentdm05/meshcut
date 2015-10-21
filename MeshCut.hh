@@ -12,9 +12,6 @@
 #include <ObjectTypes/PolyMesh/PolyMesh.hh>
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
 
-/// TriMesh and PolyMesh generalization
-typedef OpenMesh::PolyMesh_ArrayKernelT<OpenMesh::DefaultTraits> MeshT;
-
 class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface {
    Q_OBJECT
    Q_INTERFACES(BaseInterface)
@@ -70,12 +67,14 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QString version() { return QString("1.0"); }
 
    private:
+      // Sets active mesh, edge and vertex
+      BaseObjectData *setActiveElements(QMouseEvent* _event);
       // Select edges to be cut
-      void selectEdges(QMouseEvent* _event);
+      void selectEdge(QMouseEvent* _event);
       // Draw line to be cut
       void drawLine(QMouseEvent* _event);
       // Find selected edge
-      void edgeCut(QMouseEvent* _event);
+      void singleEdgeCut(QMouseEvent* _event);
       // Cut along a single edge
       void cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh);
       // Connect adjacent cuts
@@ -88,6 +87,12 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QPushButton* drawButton_;
       // 0 none toggled, 1 select edges, 2 draw line
       size_t selectionButtonToggled_;
+
+      // Active TriMesh edge handle and mesh, for handling purpose
+      // Use mesh.[edge|vertex]_handle(int) to access
+      unsigned int active_edge_;
+      unsigned int active_vertex_;
+      ACG::Vec3d active_edge_point_;
 
    public:
       MeshCut();

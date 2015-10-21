@@ -7,7 +7,9 @@
 
 Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
-MeshCut::MeshCut() : toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0) {}
+MeshCut::MeshCut() :
+   toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0), selectionButtonToggled_(0),
+   active_edge_(0), active_vertex_(0), active_edge_point_(0.0) {}
 
 /** \brief Initialize plugin
  *
@@ -100,9 +102,11 @@ void MeshCut::slotSelectionButtonClicked() {
          selectionButtonToggled_ = 2;
       }
    } else if (selectButton_->isChecked()) {
+      PluginFunctions::actionMode(Viewer::PickingMode);
       PluginFunctions::pickMode(SELECT_EDGES_PICKMODE);
       selectionButtonToggled_ = 1;
    } else if (drawButton_->isChecked()) {
+      PluginFunctions::actionMode(Viewer::PickingMode);
       PluginFunctions::pickMode(DRAW_CUT_PICKMODE);
       selectionButtonToggled_ = 2;
    } else {
@@ -112,37 +116,41 @@ void MeshCut::slotSelectionButtonClicked() {
 }
 
 /** \brief Toggle actions when the PickMode changes
-  * @param _mode the new PickMode
-  */
+ * @param _mode the new PickMode
+ */
 void MeshCut::slotPickModeChanged(const std::string& _mode) {
    edgeCutAction_->setChecked(_mode == EDGE_CUT_POPUP);
    selectButton_->setChecked(_mode == SELECT_EDGES_PICKMODE);
    drawButton_->setChecked(_mode == DRAW_CUT_PICKMODE);
 }
 
-/** \brief Called when mouse is clicked
+/** \brief Called when the mouse is clicked
+ * Only react to left mouse clicks
  *
+ * @param _event The mouse click event
  */
 void MeshCut::slotMouseEvent(QMouseEvent* _event) {
    if (_event->buttons() == Qt::RightButton)
       return;
 
    if (PluginFunctions::pickMode() == EDGE_CUT_POPUP) {
-      edgeCut(_event);
+      singleEdgeCut(_event);
    } else if (PluginFunctions::pickMode() == SELECT_EDGES_PICKMODE) {
-      selectEdges(_event);
+      selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
       drawLine(_event);
    }
 }
 
-/** \brief Find the selected edge and introduce a cut
- * @param _event the mouse click
+/** \brief Sets closest elements as active
+ * There are three elements that are set as active here, namely the index of the
+ * closest edge and vertex, and the point on that vertex closest to where the
+ * mouse click fell.
+ * The object container is returned so that we can access the mesh later.
+ *
+ * @param _event the mouse click event
  */
-void MeshCut::edgeCut(QMouseEvent* _event) {
-   if (_event->type() != QEvent::MouseButtonPress)
-      return;
-
+BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
    unsigned int node_idx, target_idx;
    ACG::Vec3d hit_point;
    if (PluginFunctions::scenegraphPick(ACG::SceneGraph::PICK_FACE, _event->pos(), node_idx, target_idx, &hit_point)) {
@@ -161,27 +169,49 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
             ++fedge_it;
             TriMesh::HalfedgeHandle he3 = mesh.halfedge_handle(*fedge_it, 0);
 
+            /// Edges
             // Find closest halfedge
-            double min_dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he1)), mesh.point(mesh.from_vertex_handle(he1)));
+            double min_e_dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he1)), mesh.point(mesh.from_vertex_handle(he1)));
             TriMesh::EdgeHandle edge = mesh.edge_handle(he1);
             double dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he2)), mesh.point(mesh.from_vertex_handle(he2)));
-            if (dist < min_dist) {
-               min_dist = dist;
+            if (dist < min_e_dist) {
+               min_e_dist = dist;
                edge = mesh.edge_handle(he2);
             }
             dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he3)), mesh.point(mesh.from_vertex_handle(he3)));
-            if (dist < min_dist) {
-               min_dist = dist;
+            if (dist < min_e_dist) {
+               min_e_dist = dist;
                edge = mesh.edge_handle(he3);
             }
+            active_edge_ = edge.idx();
 
-            // Cut edge
-            cutPrimitive(edge, mesh);
+            // Closest point on closest edge
+            TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(edge, 0);
+            TriMesh::Point edge_vertex = ACG::Geometry::projectToEdge(mesh.point(mesh.from_vertex_handle(heh)),
+                                                                      mesh.point(mesh.to_vertex_handle(heh)),
+                                                                      hit_point);
+            active_edge_point_ = TriMesh::Point(edge_vertex);
 
-            emit log(LOGOUT, "Cut edge " + QString::number(edge.idx()));
-            emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-            emit updateView();
-            emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
+            /// Vertices
+            // Get all three vertices
+            std::vector<TriMesh::VertexHandle> vertexHandles;
+            TriMesh::FaceVertexIter fv_it(mesh, faceh);
+            for (; fv_it.is_valid(); ++fv_it) {
+               vertexHandles.push_back(*fv_it);
+            }
+
+            // Find closest Vertex
+            std::vector<TriMesh::VertexHandle>::iterator v_it(vertexHandles.begin());
+            TriMesh::VertexHandle vertex(*v_it++);
+            double min_v_dist = (mesh.point(vertex) - hit_point).norm();
+            for (; v_it != vertexHandles.end(); ++v_it) {
+               double v_dist = (mesh.point(*v_it) - hit_point).norm();
+               if (v_dist < min_v_dist) {
+                  min_v_dist = v_dist;
+                  vertex = *v_it;
+               }
+            }
+            active_vertex_ = vertex.idx();
          }
          // In the case of a polymesh
          else if (object->picked(node_idx) && object->dataType(DATA_POLY_MESH)) {
@@ -207,33 +237,121 @@ void MeshCut::edgeCut(QMouseEvent* _event) {
             }
 
             /// TODO: not implemented yet
-            // Cut edge
-            // cutPrimitive(edge, mesh);
+            emit log(LOGOUT, "TODO: polyMesh handling not implemented yet");
+         }
+      }
 
-            emit log(LOGOUT, "TODO: polyMesh cut not implemented yet");
+      return object;
+   }
+   return 0;
+}
+
+/** \brief Find the selected edge and introduce a cut
+ * @param _event the mouse click
+ */
+void MeshCut::singleEdgeCut(QMouseEvent* _event) {
+   if (_event->type() != QEvent::MouseButtonPress)
+      return;
+
+   BaseObjectData* object = setActiveElements(_event);
+   if (!object)
+      return;
+
+   if (object->dataType(DATA_TRIANGLE_MESH)) {
+      TriMesh& mesh = *PluginFunctions::triMesh(object);
+
+      // Cut edge
+      cutPrimitive(mesh.edge_handle(active_edge_), mesh);
+
+      // This is to show the result of selecting and cutting directly
+      mesh.status(mesh.edge_handle(active_edge_)).set_selected(true);
+
+      emit log(LOGOUT, "Cut edge " + QString::number(active_edge_));
+      emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+      emit updateView();
+      emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
+   } else if (object->dataType(DATA_POLY_MESH)) {
+      /// TODO: not implemented yet
+      // Cut edge
+
+      emit log(LOGWARN, "TODO: polyMesh cut not implemented yet");
 //            emit log(LOGOUT, "Picked edge " + QString::number(edge.idx()));
 //            emit updatedObject(object->id(), UPDATE_TOPOLOGY);
 //            emit updateView();
 //            emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
-         }
-      }
    }
 }
 
-void MeshCut::selectEdges(QMouseEvent* _event) {
-   emit log(LOGOUT, "TODO: Select edges");
+void MeshCut::selectEdge(QMouseEvent* _event) {
+   if (_event->type() != QEvent::MouseButtonPress)
+      return;
+
+   BaseObjectData* object = setActiveElements(_event);
+   if (!object)
+      return;
+
+   if (object->dataType(DATA_TRIANGLE_MESH)) {
+      TriMesh& mesh = *PluginFunctions::triMesh(object);
+
+      // Toggle edge selection
+      TriMesh::EdgeHandle eh = mesh.edge_handle(active_edge_);
+      mesh.status(eh).set_selected(!mesh.status(eh).selected());
+
+      const char* prefix = mesh.status(eh).selected() ? "S" : "Des";
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected edge " + QString::number(active_edge_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit updateView();
+      emit createBackup(object->id(), "Edge cut", UPDATE_SELECTION_EDGES);
+
+   } else if (object->dataType(DATA_POLY_MESH)) {
+      emit log(LOGWARN, "Polymesh data structure not yet supported.");
+   }
 }
 
 void MeshCut::drawLine(QMouseEvent* _event) {
    emit log(LOGOUT, "TODO: Draw cut");
+   if (_event->type() == QEvent::MouseButtonPress) {
+
+   } else if (_event->type() == QEvent::MouseMove) {
+
+   } else if (_event->type() == QEvent::MouseButtonRelease) {
+
+   }
 }
 
+/** \brief Cuts all selected edges
+ * For all the meshes, look at all the selected edges and cut them
+ * one by one.
+ */
 void MeshCut::slotCutSelectedEdges() {
-   emit log(LOGOUT, "TODO: Cut clicked");
+   // Iterate over all objects
+   for (PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS); o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+
+         // Go through all edges
+         size_t n_cuts(0);
+         TriMesh::EdgeIter e_it, e_end(mesh.edges_end());
+         for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
+            if (mesh.status(*e_it).selected()) {
+               cutPrimitive(*e_it, mesh);
+               ++n_cuts;
+            }
+         }
+
+         emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " edges");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Selected edges cut", UPDATE_TOPOLOGY);
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         emit log(LOGWARN, "No support for cutting polymeshes yet...");
+      }
+   }
 }
 
 /** \brief Cut along edge
  *
+ * For TriMesh only.
  * Look at the surrounding topology of the edge and cut along it.
  * This schematic shows how the middle edge relates to its
  * surroundings.
@@ -348,19 +466,19 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
  *
  * @param vh The connecting vertex
  */
-void MeshCut::connectCuts(MeshT::VertexHandle vh, TriMesh& mesh) {
+void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
    /// The new vertex will carry the left side edges
    const size_t _max_cuts = 2;
    // Halfedges at cuts
-   MeshT::HalfedgeHandle heh_cuts[2*_max_cuts];
+   TriMesh::HalfedgeHandle heh_cuts[2*_max_cuts];
    // Halfedges on the left side of the cut
-   std::vector<MeshT::HalfedgeHandle> left_halfedges;
+   std::vector<TriMesh::HalfedgeHandle> left_halfedges;
    bool left_side = true;
    size_t cut = 0;
 
    // Count cuts and store halfedges according to side
-   for (MeshT::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
-      MeshT::HalfedgeHandle heh = *vih_it;
+   for (TriMesh::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
+      TriMesh::HalfedgeHandle heh = *vih_it;
       if (mesh.is_boundary(heh) && cut < _max_cuts) {
          heh_cuts[2*cut] = heh;
          heh_cuts[2*cut+1] = mesh.next_halfedge_handle(heh);
@@ -376,7 +494,7 @@ void MeshCut::connectCuts(MeshT::VertexHandle vh, TriMesh& mesh) {
       emit log(LOGERR, "Topology error, a vertex is connected to " + QString::number(cut) + " cuts");
    } else if (cut == _max_cuts) {
       // Split vertex
-      MeshT::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
+      TriMesh::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
       mesh.copy_all_properties(vh, new_vh, true);
 
       /// Update pointers
@@ -386,7 +504,7 @@ void MeshCut::connectCuts(MeshT::VertexHandle vh, TriMesh& mesh) {
       mesh.set_vertex_handle(heh_cuts[0], new_vh);
       // Other left halfedges
       if (!left_halfedges.empty()) {
-         std::vector<MeshT::HalfedgeHandle>::iterator heh_it = left_halfedges.begin();
+         std::vector<TriMesh::HalfedgeHandle>::iterator heh_it = left_halfedges.begin();
          for (; heh_it != left_halfedges.end(); ++heh_it) {
             mesh.set_vertex_handle(*heh_it, new_vh);
          }
@@ -397,8 +515,6 @@ void MeshCut::connectCuts(MeshT::VertexHandle vh, TriMesh& mesh) {
       mesh.set_halfedge_handle(vh, heh_cuts[1]);
       mesh.set_vertex_handle(heh_cuts[2], vh);
       // No need to rewire right side halfedges
-
-      emit log(LOGOUT, "Created new vertex " + QString::number(new_vh.idx()));
    }
 }
 
