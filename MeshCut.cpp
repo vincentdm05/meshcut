@@ -9,7 +9,9 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0), selectionButtonToggled_(0),
-   active_edge_(0), active_vertex_(0), active_edge_point_(0.0) {}
+   active_face_(-1), active_edge_(-1), active_vertex_(-1), active_hit_point_(0.0), prev_event_(0),
+   prev_face_(-1), prev_edge_(-1), prev_hit_point_(0.0), active_edge_crossing_(0.0), prev_edge_crossing_(0.0),
+   active_vertex_at_split_(-1), prev_vertex_at_split_(-1) {}
 
 /** \brief Initialize plugin
  *
@@ -143,10 +145,9 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
 }
 
 /** \brief Sets closest elements as active
- * There are three elements that are set as active here, namely the index of the
- * closest edge and vertex, and the point on that vertex closest to where the
- * mouse click fell.
- * The object container is returned so that we can access the mesh later.
+ * There are four elements that are set as active here, namely the index of the
+ * closest face, edge and vertex, and the hit point.
+ * The object container is returned so that we can access the mesh.
  *
  * @param _event the mouse click event
  */
@@ -154,12 +155,15 @@ BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
    unsigned int node_idx, target_idx;
    ACG::Vec3d hit_point;
    if (PluginFunctions::scenegraphPick(ACG::SceneGraph::PICK_FACE, _event->pos(), node_idx, target_idx, &hit_point)) {
+      active_hit_point_ = ACG::Vec3d(hit_point);
+
       BaseObjectData* object;
       if (PluginFunctions::getPickedObject(node_idx, object)) {
          // In the case of a triangle mesh
          if (object->picked(node_idx) && object->dataType(DATA_TRIANGLE_MESH)) {
             TriMesh& mesh = *PluginFunctions::triMesh(object);
             TriMesh::FaceHandle faceh = mesh.face_handle(target_idx);
+            active_face_ = target_idx;
 
             // Get all three halfedges on the clicked face
             TriMesh::FaceEdgeIter fedge_it(mesh, faceh);
@@ -171,26 +175,31 @@ BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
 
             /// Edges
             // Find closest halfedge
-            double min_e_dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he1)), mesh.point(mesh.from_vertex_handle(he1)));
+            double min_e_dist = ACG::Geometry::distPointLineSquared(
+                     hit_point,
+                     mesh.point(mesh.to_vertex_handle(he1)),
+                     mesh.point(mesh.from_vertex_handle(he1)));
+
             TriMesh::EdgeHandle edge = mesh.edge_handle(he1);
-            double dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he2)), mesh.point(mesh.from_vertex_handle(he2)));
+            double dist = ACG::Geometry::distPointLineSquared(
+                     hit_point,
+                     mesh.point(mesh.to_vertex_handle(he2)),
+                     mesh.point(mesh.from_vertex_handle(he2)));
+
             if (dist < min_e_dist) {
                min_e_dist = dist;
                edge = mesh.edge_handle(he2);
             }
-            dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(he3)), mesh.point(mesh.from_vertex_handle(he3)));
+            dist = ACG::Geometry::distPointLineSquared(
+                     hit_point,
+                     mesh.point(mesh.to_vertex_handle(he3)),
+                     mesh.point(mesh.from_vertex_handle(he3)));
+
             if (dist < min_e_dist) {
                min_e_dist = dist;
                edge = mesh.edge_handle(he3);
             }
             active_edge_ = edge.idx();
-
-            // Closest point on closest edge
-            TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(edge, 0);
-            TriMesh::Point edge_vertex = ACG::Geometry::projectToEdge(mesh.point(mesh.from_vertex_handle(heh)),
-                                                                      mesh.point(mesh.to_vertex_handle(heh)),
-                                                                      hit_point);
-            active_edge_point_ = TriMesh::Point(edge_vertex);
 
             /// Vertices
             // Get all three vertices
@@ -217,6 +226,7 @@ BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
          else if (object->picked(node_idx) && object->dataType(DATA_POLY_MESH)) {
             PolyMesh& mesh = *PluginFunctions::polyMesh(object);
             PolyMesh::FaceHandle faceh = mesh.face_handle(target_idx);
+            active_face_ = target_idx;
 
             // Get all halfedges on the face
             PolyMesh::FaceHalfedgeIter fhedge_it(mesh, faceh);
@@ -225,24 +235,60 @@ BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
                halfEdgeHandles.push_back(*fhedge_it);
             }
 
+            /// Edges
             // Find nearest edge
             PolyMesh::EdgeHandle edge = mesh.edge_handle(*halfEdgeHandles.begin());
-            double min_dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(*halfEdgeHandles.begin())), mesh.point(mesh.from_vertex_handle(*halfEdgeHandles.begin())));
-            for (std::vector<PolyMesh::HalfedgeHandle>::iterator iter = halfEdgeHandles.begin(); iter != halfEdgeHandles.end(); ++iter) {
-               double dist = ACG::Geometry::distPointLineSquared(hit_point, mesh.point(mesh.to_vertex_handle(*iter)), mesh.point(mesh.from_vertex_handle(*iter)));
+            double min_dist = ACG::Geometry::distPointLineSquared(
+                     hit_point,
+                     mesh.point(mesh.to_vertex_handle(*halfEdgeHandles.begin())),
+                     mesh.point(mesh.from_vertex_handle(*halfEdgeHandles.begin())));
+
+            std::vector<PolyMesh::HalfedgeHandle>::iterator iter = halfEdgeHandles.begin();
+            for (; iter != halfEdgeHandles.end(); ++iter) {
+               double dist = ACG::Geometry::distPointLineSquared(
+                        hit_point,
+                        mesh.point(mesh.to_vertex_handle(*iter)),
+                        mesh.point(mesh.from_vertex_handle(*iter)));
+
                if (dist < min_dist) {
                   edge = mesh.edge_handle(*iter);
                   min_dist = dist;
                }
             }
+            active_edge_ = edge.idx();
 
-            /// TODO: not implemented yet
-            emit log(LOGOUT, "TODO: polyMesh handling not implemented yet");
+            /// Vertices
+            // Get all vertices
+            std::vector<PolyMesh::VertexHandle> vertexHandles;
+            PolyMesh::FaceVertexIter fv_it(mesh, faceh);
+            for (; fv_it.is_valid(); ++fv_it) {
+               vertexHandles.push_back(*fv_it);
+            }
+
+            // Find closest Vertex
+            std::vector<PolyMesh::VertexHandle>::iterator v_it(vertexHandles.begin());
+            PolyMesh::VertexHandle vertex(*v_it++);
+            double min_v_dist = (mesh.point(vertex) - hit_point).norm();
+            for (; v_it != vertexHandles.end(); ++v_it) {
+               double v_dist = (mesh.point(*v_it) - hit_point).norm();
+               if (v_dist < min_v_dist) {
+                  min_v_dist = v_dist;
+                  vertex = *v_it;
+               }
+            }
+            active_vertex_ = vertex.idx();
          }
       }
 
       return object;
    }
+
+   // Reset defaults
+   active_face_ = -1;
+   active_edge_ = -1;
+   active_vertex_ = -1;
+   active_hit_point_ = ACG::Vec3d(0.0);
+
    return 0;
 }
 
@@ -261,27 +307,37 @@ void MeshCut::singleEdgeCut(QMouseEvent* _event) {
       TriMesh& mesh = *PluginFunctions::triMesh(object);
 
       // Cut edge
-      cutPrimitive(mesh.edge_handle(active_edge_), mesh);
+      if (cutPrimitive(mesh.edge_handle(active_edge_), mesh)) {
+         // This is to show the result of selecting and cutting directly
+         mesh.status(mesh.edge_handle(active_edge_)).set_selected(true);
 
-      // This is to show the result of selecting and cutting directly
-      mesh.status(mesh.edge_handle(active_edge_)).set_selected(true);
+         emit log(LOGOUT, "Cut edge " + QString::number(active_edge_));
+         emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
+      }
 
-      emit log(LOGOUT, "Cut edge " + QString::number(active_edge_));
-      emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-      emit updateView();
-      emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
    } else if (object->dataType(DATA_POLY_MESH)) {
-      /// TODO: not implemented yet
-      // Cut edge
+      PolyMesh& mesh = *PluginFunctions::polyMesh(object);
 
-      emit log(LOGWARN, "TODO: polyMesh cut not implemented yet");
-//            emit log(LOGOUT, "Picked edge " + QString::number(edge.idx()));
-//            emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-//            emit updateView();
-//            emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
+      // Cut edge
+      if (cutPrimitive(mesh.edge_handle(active_edge_), mesh)) {
+         // This is to show the result of selecting and cutting directly
+         mesh.status(mesh.edge_handle(active_edge_)).set_selected(true);
+
+         emit log(LOGOUT, "Picked edge " + QString::number(active_edge_));
+         emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(object->id(), "Edge cut", UPDATE_TOPOLOGY);
+      }
    }
 }
 
+/** \brief Edge selection
+ * Sets the clicked edge as selected, or, if it already was, deselect it.
+ *
+ * @param _event The mouse click
+ */
 void MeshCut::selectEdge(QMouseEvent* _event) {
    if (_event->type() != QEvent::MouseButtonPress)
       return;
@@ -298,24 +354,197 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
       mesh.status(eh).set_selected(!mesh.status(eh).selected());
 
       const char* prefix = mesh.status(eh).selected() ? "S" : "Des";
-      emit log(LOGOUT, QString::fromStdString(prefix) + "elected edge " + QString::number(active_edge_));
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected TriMesh edge " + QString::number(active_edge_));
       emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
       emit updateView();
       emit createBackup(object->id(), "Edge cut", UPDATE_SELECTION_EDGES);
 
    } else if (object->dataType(DATA_POLY_MESH)) {
       emit log(LOGWARN, "Polymesh data structure not yet supported.");
+      PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+
+      // Toggle edge selection
+      PolyMesh::EdgeHandle eh = mesh.edge_handle(active_edge_);
+      mesh.status(eh).set_selected(!mesh.status(eh).selected());
+
+      const char* prefix = mesh.status(eh).selected() ? "S" : "Des";
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected PolyMesh edge " + QString::number(active_edge_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit updateView();
+      emit createBackup(object->id(), "Edge cut", UPDATE_SELECTION_EDGES);
    }
 }
 
+/** \brief Draw a line and select the created edges
+ *
+ * At each edge crossing, we save the current state of component variables,
+ * i.e. the current (or active) edge crossing point, the active edge, active
+ * face and active vertex at edge split (if relevant).
+ *
+ * @param _event The mouse click
+ */
 void MeshCut::drawLine(QMouseEvent* _event) {
-   emit log(LOGOUT, "TODO: Draw cut");
    if (_event->type() == QEvent::MouseButtonPress) {
+      setActiveElements(_event);
+
+      // Save click region and location
+      prev_face_ = active_face_;
+      prev_hit_point_ = ACG::Vec3d(active_hit_point_);
 
    } else if (_event->type() == QEvent::MouseMove) {
+      BaseObjectData* object = setActiveElements(_event);
+
+      /// TODO: cannot go out of mesh at the moment...
+      // In case the mouse got out of the mesh
+      bool gotOut = false;
+
+      if (object) {
+         // Save current event properties while we can
+         prev_event_ = _event;
+      } else if (prev_event_) {
+         // Simulate the fact that we are still on the mesh
+         object = setActiveElements(prev_event_);
+         gotOut = true;
+      }
+
+      /// Triangular mesh
+      if (object && object->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(object);
+
+         // Keep track of the first edge before it is crossed
+         if (active_edge_crossing_ == ACG::Vec3d(0.0)) {
+            prev_edge_ = active_edge_;
+         }
+
+         // Face has changed or mouse got out, record edge crossing
+         if (prev_face_ != active_face_ || gotOut) {
+            TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(active_edge_), 0);
+
+            /// Record crossing
+            // Mouse is still over the mesh and crosses an edge
+            if (prev_face_ != -1 && active_face_ != -1) {
+               // Closest point on closest edge
+               TriMesh::Point edge_point0 = ACG::Geometry::projectToEdge(
+                        mesh.point(mesh.from_vertex_handle(heh)),
+                        mesh.point(mesh.to_vertex_handle(heh)),
+                        prev_hit_point_);
+
+               TriMesh::Point edge_point1 = ACG::Geometry::projectToEdge(
+                        mesh.point(mesh.from_vertex_handle(heh)),
+                        mesh.point(mesh.to_vertex_handle(heh)),
+                        active_hit_point_);
+
+               // The crossing is defined as the middle point of the two closest edge projections
+               active_edge_crossing_ = ACG::Vec3d((edge_point0 + edge_point1) / 2.0);
+            }
+            // Mouse is now out of the mesh
+            else if (prev_face_ != -1) {
+               TriMesh::Point edge_point0 = ACG::Geometry::projectToEdge(
+                        mesh.point(mesh.from_vertex_handle(heh)),
+                        mesh.point(mesh.to_vertex_handle(heh)),
+                        prev_hit_point_);
+
+               active_edge_crossing_ = ACG::Vec3d(edge_point0);
+            }
+            // Mouse came inside the mesh
+            else if (active_face_ != -1){
+               TriMesh::Point edge_point1 = ACG::Geometry::projectToEdge(
+                        mesh.point(mesh.from_vertex_handle(heh)),
+                        mesh.point(mesh.to_vertex_handle(heh)),
+                        active_hit_point_);
+
+               active_edge_crossing_ = ACG::Vec3d(edge_point1);
+            }
+
+            /// Split at previous crossing
+            if (prev_edge_crossing_ != ACG::Vec3d(0.0) &&
+                prev_edge_crossing_ != active_edge_crossing_) {
+               TriMesh::VertexHandle vh = mesh.split(mesh.edge_handle(prev_edge_), prev_edge_crossing_);
+               prev_edge_ = active_edge_;
+
+               // Newly created vertex at edge split
+               active_vertex_at_split_ = vh.idx();
+
+               /// Select edge between current split and previous split
+               if (prev_vertex_at_split_ != -1 &&
+                   prev_vertex_at_split_ != active_vertex_at_split_) {
+                  // Select edge between the two vertices
+                  int edge_to_split = edge_between(mesh.vertex_handle(prev_vertex_at_split_),
+                                                   mesh.vertex_handle(active_vertex_at_split_),
+                                                   mesh);
+                  if (edge_to_split != -1) {
+                     mesh.status(mesh.edge_handle(edge_to_split)).set_selected(true);
+                  } else {
+                     emit log(LOGWARN, "Warning! The mouse was too quick and the cut was not correctly registered.");
+                  }
+               }
+
+               // Save current vertex at split
+               prev_vertex_at_split_ = active_vertex_at_split_;
+            }
+
+            // Save current edge crossing
+            prev_edge_crossing_ = ACG::Vec3d(active_edge_crossing_);
+
+            // Now update previous edge
+            if (active_edge_ != -1)
+               prev_edge_ = active_edge_;
+
+            emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+            emit updateView();
+         }
+
+      }
+      /// Polygonal mesh
+      else if (object && object->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+         emit log(LOGWARN, "Polymesh not yet supported for drawing cuts");
+      }
+
+      // In the end, save active face and hit point
+      prev_face_ = active_face_;
+      prev_hit_point_ = ACG::Vec3d(active_hit_point_);
 
    } else if (_event->type() == QEvent::MouseButtonRelease) {
+      BaseObjectData* object = setActiveElements(_event);
 
+      // In case the mouse got out of the mesh
+      bool gotOut = false;
+      if (!object && prev_event_) {
+         object = setActiveElements(prev_event_);
+         gotOut = true;
+      }
+
+      if (object && object->dataType(DATA_TRIANGLE_MESH) && active_edge_crossing_ != ACG::Vec3d(0.0)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(object);
+
+         // Finish selection
+         TriMesh::VertexHandle vh = mesh.split(mesh.edge_handle(prev_edge_), prev_edge_crossing_);
+         int edge_to_split = edge_between(mesh.vertex_handle(prev_vertex_at_split_), vh, mesh);
+         if (edge_to_split != -1) {
+            mesh.status(mesh.edge_handle(edge_to_split)).set_selected(true);
+         } else {
+            emit log(LOGWARN, "Warning! The mouse was too quick and the end of the cut was not correctly registered.");
+         }
+
+         emit log(LOGOUT, "Drew TriMesh cut");
+         emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(object->id(), "Selected drawing edges", UPDATE_TOPOLOGY);
+
+      } else if (object && object->dataType(DATA_POLY_MESH)) {
+         emit log(LOGWARN, "Polymesh not yet supported for drawing cuts");
+      }
+
+      // Reset all saved components
+      prev_event_ = 0;
+      prev_face_ = -1;
+      prev_edge_ = -1;
+      prev_hit_point_ = ACG::Vec3d(0.0);
+      active_edge_crossing_ = ACG::Vec3d(0.0);
+      prev_edge_crossing_ = ACG::Vec3d(0.0);
+      active_vertex_at_split_ = -1;
+      prev_vertex_at_split_ = -1;
    }
 }
 
@@ -333,18 +562,33 @@ void MeshCut::slotCutSelectedEdges() {
          size_t n_cuts(0);
          TriMesh::EdgeIter e_it, e_end(mesh.edges_end());
          for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
-            if (mesh.status(*e_it).selected()) {
-               cutPrimitive(*e_it, mesh);
+            if (mesh.status(*e_it).selected() && cutPrimitive(*e_it, mesh)) {
+               // Cut and count
                ++n_cuts;
             }
          }
 
-         emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " edges");
+         emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " TriMesh edges");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
          emit updateView();
          emit createBackup(o_it->id(), "Selected edges cut", UPDATE_TOPOLOGY);
       } else if (o_it->dataType(DATA_POLY_MESH)) {
          emit log(LOGWARN, "No support for cutting polymeshes yet...");
+         PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
+
+         // Iterate over all edges
+         size_t n_cuts(0);
+         PolyMesh::EdgeIter e_it, e_end(mesh.edges_end());
+         for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
+            if (mesh.status(*e_it).selected() && cutPrimitive(*e_it, mesh)) {
+               ++n_cuts;
+            }
+         }
+
+         emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " PolyMesh edges");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Selected edges cut", UPDATE_TOPOLOGY);
       }
    }
 }
@@ -374,33 +618,39 @@ void MeshCut::slotCutSelectedEdges() {
  *
  * @param _edge The edge defining the cut
  * @param _mesh The mesh
+ * @return success state
  */
-void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
+template<typename MeshT>
+bool MeshCut::cutPrimitive(typename MeshT::EdgeHandle edge, MeshT& mesh) {
+   static_assert((std::is_same<MeshT, TriMesh>::value ||
+                 std::is_same<MeshT, PolyMesh>::value),
+                 "cutPrimitive: expected either TriMesh or PolyMesh");
+
    // Already a hole there
    if (mesh.is_boundary(edge)) {
-      return;
+      return false;
    }
 
    /// Get relevant neighbouring components
    // Original edge's halfedges
-   TriMesh::HalfedgeHandle heh_in = mesh.halfedge_handle(edge, 0);
-   TriMesh::HalfedgeHandle heh_out = mesh.halfedge_handle(edge, 1);
+   typename MeshT::HalfedgeHandle heh_in = mesh.halfedge_handle(edge, 0);
+   typename MeshT::HalfedgeHandle heh_out = mesh.halfedge_handle(edge, 1);
 
    // Left face halfedges
-   TriMesh::HalfedgeHandle left_up_heh_to_new = mesh.next_halfedge_handle(heh_out);
-   TriMesh::HalfedgeHandle left_down_heh_to_new = mesh.next_halfedge_handle(left_up_heh_to_new);
+   typename MeshT::HalfedgeHandle left_up_heh_to_new = mesh.next_halfedge_handle(heh_out);
+   typename MeshT::HalfedgeHandle left_down_heh_to_new = mesh.prev_halfedge_handle(heh_out);
 
    // Face adjacent to new edge
-   TriMesh::FaceHandle fh_left = mesh.face_handle(heh_out);
+   typename MeshT::FaceHandle fh_left = mesh.face_handle(heh_out);
 
    // Edge endpoints
-   TriMesh::VertexHandle vh_up = mesh.from_vertex_handle(heh_in);
-   TriMesh::VertexHandle vh_down = mesh.to_vertex_handle(heh_in);
+   typename MeshT::VertexHandle vh_up = mesh.from_vertex_handle(heh_in);
+   typename MeshT::VertexHandle vh_down = mesh.to_vertex_handle(heh_in);
 
 
    /// Create new edge, copy all properties and adjust pointers
    // Outward new halfedge
-   TriMesh::HalfedgeHandle new_heh_out = mesh.new_edge(vh_down, vh_up);
+   typename MeshT::HalfedgeHandle new_heh_out = mesh.new_edge(vh_down, vh_up);
    mesh.copy_all_properties(heh_in, new_heh_out, true);
    mesh.set_vertex_handle(new_heh_out, vh_down);
    mesh.set_next_halfedge_handle(new_heh_out, heh_out);
@@ -409,7 +659,7 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
    mesh.set_halfedge_handle(vh_up, new_heh_out);
 
    // Inward new halfedge
-   TriMesh::HalfedgeHandle new_heh_in = mesh.opposite_halfedge_handle(new_heh_out);
+   typename MeshT::HalfedgeHandle new_heh_in = mesh.opposite_halfedge_handle(new_heh_out);
    mesh.copy_all_properties(heh_out, new_heh_out, true);
    mesh.set_vertex_handle(new_heh_in, vh_up);
    mesh.set_face_handle(new_heh_in, fh_left);
@@ -427,6 +677,8 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
    // If there are neighbouring cuts, connect them
    connectCuts(vh_up, mesh);
    connectCuts(vh_down, mesh);
+
+   return true;
 }
 
 /** \brief Joins adjacent cuts
@@ -465,20 +717,26 @@ void MeshCut::cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh) {
  *                x             x
  *
  * @param vh The connecting vertex
+ * @param mesh The mesh
  */
-void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
+template<typename MeshT>
+void MeshCut::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
+   static_assert((std::is_same<MeshT, TriMesh>::value ||
+                 std::is_same<MeshT, PolyMesh>::value),
+                 "connectCuts: expected either TriMesh or PolyMesh");
+
    /// The new vertex will carry the left side edges
    const size_t _max_cuts = 2;
    // Halfedges at cuts
-   TriMesh::HalfedgeHandle heh_cuts[2*_max_cuts];
+   typename MeshT::HalfedgeHandle heh_cuts[2*_max_cuts];
    // Halfedges on the left side of the cut
-   std::vector<TriMesh::HalfedgeHandle> left_halfedges;
+   std::vector<typename MeshT::HalfedgeHandle> left_halfedges;
    bool left_side = true;
    size_t cut = 0;
 
    // Count cuts and store halfedges according to side
-   for (TriMesh::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
-      TriMesh::HalfedgeHandle heh = *vih_it;
+   for (typename MeshT::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
+      typename MeshT::HalfedgeHandle heh = *vih_it;
       if (mesh.is_boundary(heh) && cut < _max_cuts) {
          heh_cuts[2*cut] = heh;
          heh_cuts[2*cut+1] = mesh.next_halfedge_handle(heh);
@@ -494,7 +752,7 @@ void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
       emit log(LOGERR, "Topology error, a vertex is connected to " + QString::number(cut) + " cuts");
    } else if (cut == _max_cuts) {
       // Split vertex
-      TriMesh::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
+      typename MeshT::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
       mesh.copy_all_properties(vh, new_vh, true);
 
       /// Update pointers
@@ -504,7 +762,7 @@ void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
       mesh.set_vertex_handle(heh_cuts[0], new_vh);
       // Other left halfedges
       if (!left_halfedges.empty()) {
-         std::vector<TriMesh::HalfedgeHandle>::iterator heh_it = left_halfedges.begin();
+         typename std::vector<typename MeshT::HalfedgeHandle>::iterator heh_it = left_halfedges.begin();
          for (; heh_it != left_halfedges.end(); ++heh_it) {
             mesh.set_vertex_handle(*heh_it, new_vh);
          }
@@ -516,6 +774,25 @@ void MeshCut::connectCuts(TriMesh::VertexHandle vh, TriMesh& mesh) {
       mesh.set_vertex_handle(heh_cuts[2], vh);
       // No need to rewire right side halfedges
    }
+}
+
+/** \brief Get the index of the edge between two given vertices
+ *
+ * @param vh_from the first vertex
+ * @param vh_to the second vertex
+ * @param mesh the mesh on which reside the vertices and edge
+ * @return the index of the edge
+ */
+template<typename MeshT>
+int MeshCut::edge_between(typename MeshT::VertexHandle vh_from,
+                          typename MeshT::VertexHandle vh_to, MeshT& mesh) {
+   typename MeshT::VertexOHalfedgeIter voh_it = mesh.voh_iter(vh_from);
+   for (; voh_it.is_valid(); ++voh_it) {
+      if (mesh.to_vertex_handle(*voh_it) == vh_to) {
+         return mesh.edge_handle(*voh_it).idx();
+      }
+   }
+   return -1;
 }
 
 

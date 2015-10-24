@@ -76,9 +76,15 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Find selected edge
       void singleEdgeCut(QMouseEvent* _event);
       // Cut along a single edge
-      void cutPrimitive(TriMesh::EdgeHandle edge, TriMesh& mesh);
+      template<typename MeshT>
+      bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh);
       // Connect adjacent cuts
-      void connectCuts(TriMesh::VertexHandle vh, TriMesh &mesh);
+      template<typename MeshT>
+      void connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh);
+      // Get edge between two vertices
+      template<typename MeshT>
+      int edge_between(typename MeshT::VertexHandle vh_from,
+                       typename MeshT::VertexHandle vh_to, MeshT& mesh);
 
       QToolBar* toolBar_;
       QAction* edgeCutAction_;
@@ -88,11 +94,28 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // 0 none toggled, 1 select edges, 2 draw line
       size_t selectionButtonToggled_;
 
-      // Active TriMesh edge handle and mesh, for handling purpose
-      // Use mesh.[edge|vertex]_handle(int) to access
-      unsigned int active_edge_;
-      unsigned int active_vertex_;
-      ACG::Vec3d active_edge_point_;
+      // Active components
+      // Use mesh.[face|edge|vertex]_handle(int) to access
+      int active_face_;
+      int active_edge_;
+      int active_vertex_;
+      ACG::Vec3d active_hit_point_;
+
+      // Keep a copy of the last valid event
+      QMouseEvent* prev_event_;
+
+      // Saved passed components
+      int prev_face_;
+      int prev_edge_;
+      ACG::Vec3d prev_hit_point_;
+
+      // Edge crossings
+      ACG::Vec3d active_edge_crossing_;
+      ACG::Vec3d prev_edge_crossing_;
+
+      // Vertices at splits
+      int active_vertex_at_split_;
+      int prev_vertex_at_split_;
 
    public:
       MeshCut();
