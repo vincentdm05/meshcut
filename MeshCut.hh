@@ -94,17 +94,18 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // 0 none toggled, 1 select edges, 2 draw line
       size_t selectionButtonToggled_;
 
-      // Active components
-      // Use mesh.[face|edge|vertex]_handle(int) to access
+      // Active elements set by setActiveElements()
+      // Use mesh.[face|edge|vertex]_handle(idx) to access
       int active_face_;
       int active_edge_;
-      int active_vertex_;
+      int active_vertex_;  /// Do we need that?
       ACG::Vec3d active_hit_point_;
 
-      // Keep a copy of the last valid event
-      QMouseEvent* prev_event_;
+      // Record of last valid object
+      BaseObjectData* latest_object_;
+      int latest_edge_;
 
-      // Saved passed components
+      // Previously active components
       int prev_face_;
       int prev_edge_;
       ACG::Vec3d prev_hit_point_;

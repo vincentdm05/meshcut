@@ -9,7 +9,8 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0), selectionButtonToggled_(0),
-   active_face_(-1), active_edge_(-1), active_vertex_(-1), active_hit_point_(0.0), prev_event_(0),
+   active_face_(-1), active_edge_(-1), active_vertex_(-1), active_hit_point_(0.0),
+   latest_object_(0), latest_edge_(-1),
    prev_face_(-1), prev_edge_(-1), prev_hit_point_(0.0), active_edge_crossing_(0.0), prev_edge_crossing_(0.0),
    active_vertex_at_split_(-1), prev_vertex_at_split_(-1) {}
 
@@ -377,9 +378,8 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
 
 /** \brief Draw a line and select the created edges
  *
- * At each edge crossing, we save the current state of component variables,
- * i.e. the current (or active) edge crossing point, the active edge, active
- * face and active vertex at edge split (if relevant).
+ * At each edge crossing, save the current state of component variables,
+ * perform a split and selection (if necessary), and advance.
  *
  * @param _event The mouse click
  */
@@ -399,11 +399,16 @@ void MeshCut::drawLine(QMouseEvent* _event) {
       bool gotOut = false;
 
       if (object) {
-         // Save current event properties while we can
-         prev_event_ = _event;
-      } else if (prev_event_) {
-         // Simulate the fact that we are still on the mesh
-         object = setActiveElements(prev_event_);
+         // Save current elements while we can
+         latest_object_ = object;
+         latest_edge_ = active_edge_;
+      } else if (latest_object_) {
+         // Simulate the fact that we are still on the mesh and restore latest elements
+         object = latest_object_;
+         active_edge_ = latest_edge_;
+         // We can restore from prev_hit_point_ because it was last updated before
+         // getting out of the mesh. After that, we don't need it anymore.
+         active_hit_point_ = prev_hit_point_;
          gotOut = true;
       }
 
@@ -417,7 +422,7 @@ void MeshCut::drawLine(QMouseEvent* _event) {
          }
 
          // Face has changed or mouse got out, record edge crossing
-         if (prev_face_ != active_face_ || gotOut) {
+         if (prev_face_ != active_face_ || gotOut) {  /// TODO when coming back to the previous face, be careful with the new index
             TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(active_edge_), 0);
 
             /// Record crossing
@@ -438,11 +443,11 @@ void MeshCut::drawLine(QMouseEvent* _event) {
                active_edge_crossing_ = ACG::Vec3d((edge_point0 + edge_point1) / 2.0);
             }
             // Mouse is now out of the mesh
-            else if (prev_face_ != -1) {
+            else if (gotOut) {
                TriMesh::Point edge_point0 = ACG::Geometry::projectToEdge(
                         mesh.point(mesh.from_vertex_handle(heh)),
                         mesh.point(mesh.to_vertex_handle(heh)),
-                        prev_hit_point_);
+                        active_hit_point_);
 
                active_edge_crossing_ = ACG::Vec3d(edge_point0);
             }
@@ -467,14 +472,18 @@ void MeshCut::drawLine(QMouseEvent* _event) {
 
                /// Select edge between current split and previous split
                if (prev_vertex_at_split_ != -1 &&
-                   prev_vertex_at_split_ != active_vertex_at_split_) {
+                   prev_vertex_at_split_ != active_vertex_at_split_) {  /// TODO: should we select edge at border?
                   // Select edge between the two vertices
-                  int edge_to_split = edge_between(mesh.vertex_handle(prev_vertex_at_split_),
+                  int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split_),
                                                    mesh.vertex_handle(active_vertex_at_split_),
                                                    mesh);
-                  if (edge_to_split != -1) {
-                     mesh.status(mesh.edge_handle(edge_to_split)).set_selected(true);
-                  } else {
+                  if (edge_to_select != -1) {
+                     mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+                  }
+                  /* No need to insist if the cursor came out of the mesh
+                   * and came back on another face */
+                  else if (!gotOut) {
+                     /// TODO: if mouse was too quick, the path still has to be created
                      emit log(LOGWARN, "Warning! The mouse was too quick and the cut was not correctly registered.");
                   }
                }
@@ -509,20 +518,19 @@ void MeshCut::drawLine(QMouseEvent* _event) {
       BaseObjectData* object = setActiveElements(_event);
 
       // In case the mouse got out of the mesh
-      bool gotOut = false;
-      if (!object && prev_event_) {
-         object = setActiveElements(prev_event_);
-         gotOut = true;
+      if (!object) {
+         object = latest_object_;
       }
 
-      if (object && object->dataType(DATA_TRIANGLE_MESH) && active_edge_crossing_ != ACG::Vec3d(0.0)) {
+      if (object && object->dataType(DATA_TRIANGLE_MESH) &&
+          prev_edge_crossing_ != ACG::Vec3d(0.0) && active_vertex_at_split_ != -1) {
          TriMesh& mesh = *PluginFunctions::triMesh(object);
 
          // Finish selection
          TriMesh::VertexHandle vh = mesh.split(mesh.edge_handle(prev_edge_), prev_edge_crossing_);
-         int edge_to_split = edge_between(mesh.vertex_handle(prev_vertex_at_split_), vh, mesh);
-         if (edge_to_split != -1) {
-            mesh.status(mesh.edge_handle(edge_to_split)).set_selected(true);
+         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split_), vh, mesh);
+         if (edge_to_select != -1) {
+            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
          } else {
             emit log(LOGWARN, "Warning! The mouse was too quick and the end of the cut was not correctly registered.");
          }
@@ -537,7 +545,8 @@ void MeshCut::drawLine(QMouseEvent* _event) {
       }
 
       // Reset all saved components
-      prev_event_ = 0;
+      latest_object_ = 0;
+      latest_edge_ = -1;
       prev_face_ = -1;
       prev_edge_ = -1;
       prev_hit_point_ = ACG::Vec3d(0.0);
