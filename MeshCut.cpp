@@ -506,7 +506,7 @@ void MeshCut::drawLine(QMouseEvent* _event) {
       }
       /// Polygonal mesh
       else if (object && object->dataType(DATA_POLY_MESH)) {
-         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+//         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
          emit log(LOGWARN, "Polymesh not yet supported for drawing cuts");
       }
 

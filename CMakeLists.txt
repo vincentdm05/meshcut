@@ -1,11 +1,14 @@
 include (plugin)
 openflipper_plugin ( INSTALLDATA Icons )
 
+# For CGAL and Boost
+set(CMAKE_CXX_FLAGS "-lboost_system -lCGAL -lCGAL_Core -frounding-math ${CMAKE_CXX_FLAGS}")
+
 
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang") #Tests for Clang and AppleClang which is defined in CMake 3.0 and higher
     message("Clang.")
-    set(CMAKE_CXX_FLAGS "-std=c++11 -stdlib=libc++ -Wall -g")
+    set(CMAKE_CXX_FLAGS "-std=c++11 -stdlib=libc++ -Wall -g ${CMAKE_CXX_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 #    set(CMAKE_CXX_FLAGS_DEBUG "-g")
     add_definitions(-DSHAPEOP_CLANG)
@@ -13,7 +16,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang") #Tests for Clang and AppleClang which 
    set(OPENMP OFF CACHE BOOL "OpenMP")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     message("GCC.")
-    set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -g")
+    set(CMAKE_CXX_FLAGS "-std=c++11 -Wall -g ${CMAKE_CXX_FLAGS}")
     set(CMAKE_CXX_FLAGS_RELEASE "-Ofast -DNDEBUG")
 #    set(CMAKE_CXX_FLAGS_DEBUG "-g")
     add_definitions(-DSHAPEOP_GCC)
@@ -22,12 +25,12 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Intel")
     message("ICC.")
     if(WIN32)
-        set(CMAKE_CXX_FLAGS "/Qstd=c++11")
+        set(CMAKE_CXX_FLAGS "/Qstd=c++11 ${CMAKE_CXX_FLAGS}")
         set(CMAKE_CXX_FLAGS_RELEASE "/O3 /DNDEBUG")
         add_definitions(/DSHAPEOP_ICC)
         add_definitions(/DSHAPEOP_EXPORT)
     else()
-        set(CMAKE_CXX_FLAGS "-std=c++11")
+        set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
         set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
         add_definitions(-DSHAPEOP_ICC)
         add_definitions(-DSHAPEOP_EXPORT)
@@ -43,15 +46,6 @@ elseif("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
    set(OPENMP ON CACHE BOOL "OpenMP")
 else()
     message( FATAL_ERROR "CXX compiler not recognized. CMake will quit." )
-endif()
-
-# Find CGAL
-find_package(CGAL REQUIRED)
-include_directories(${CGAL_INCLUDE_DIR})
-if(NOT CGAL_FOUND)
-    message(ERROR " CGAL not found.")
-else()
-    message("CGAL found.")
 endif()
 
 
