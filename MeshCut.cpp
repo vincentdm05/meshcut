@@ -9,10 +9,18 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0), selectionButtonToggled_(0),
-   active_face_(-1), active_edge_(-1), active_vertex_(-1), active_hit_point_(0.0),
-   latest_object_(0), latest_edge_(-1),
-   prev_face_(-1), prev_edge_(-1), prev_hit_point_(0.0), active_edge_crossing_(0.0), prev_edge_crossing_(0.0),
-   active_vertex_at_split_(-1), prev_vertex_at_split_(-1) {}
+   active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
+   visible_path_(), recorded_path_(), edges_to_split_(), latest_object_(0),
+   visible_stuff_() {}
+
+MeshCut::~MeshCut() {
+   /// This is for debug
+   if (!visible_stuff_.empty()) {
+      for (std::vector<ACG::SceneGraph::LineNode*>::iterator it = visible_stuff_.begin(); it != visible_stuff_.end(); ++it) {
+         delete *it;
+      }
+   }
+}
 
 /** \brief Initialize plugin
  *
@@ -141,7 +149,7 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
    } else if (PluginFunctions::pickMode() == SELECT_EDGES_PICKMODE) {
       selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
-      drawLine(_event);
+      mouseDraw(_event);
    }
 }
 
@@ -152,10 +160,10 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
  *
  * @param _event the mouse click event
  */
-BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
+BaseObjectData *MeshCut::setActiveElements(QPoint _pos) {
    unsigned int node_idx, target_idx;
    ACG::Vec3d hit_point;
-   if (PluginFunctions::scenegraphPick(ACG::SceneGraph::PICK_FACE, _event->pos(), node_idx, target_idx, &hit_point)) {
+   if (PluginFunctions::scenegraphPick(ACG::SceneGraph::PICK_FACE, _pos, node_idx, target_idx, &hit_point)) {
       active_hit_point_ = ACG::Vec3d(hit_point);
 
       BaseObjectData* object;
@@ -293,14 +301,14 @@ BaseObjectData *MeshCut::setActiveElements(QMouseEvent *_event) {
    return 0;
 }
 
-/** \brief Find the selected edge and introduce a cut
+/** \brief Cut the clicked edge
  * @param _event the mouse click
  */
 void MeshCut::singleEdgeCut(QMouseEvent* _event) {
    if (_event->type() != QEvent::MouseButtonPress)
       return;
 
-   BaseObjectData* object = setActiveElements(_event);
+   BaseObjectData* object = setActiveElements(_event->pos());
    if (!object)
       return;
 
@@ -343,7 +351,7 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
    if (_event->type() != QEvent::MouseButtonPress)
       return;
 
-   BaseObjectData* object = setActiveElements(_event);
+   BaseObjectData* object = setActiveElements(_event->pos());
    if (!object)
       return;
 
@@ -383,177 +391,345 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
  *
  * @param _event The mouse click
  */
-void MeshCut::drawLine(QMouseEvent* _event) {
-   if (_event->type() == QEvent::MouseButtonPress) {
-      setActiveElements(_event);
-
-      // Save click region and location
-      prev_face_ = active_face_;
-      prev_hit_point_ = ACG::Vec3d(active_hit_point_);
-
-   } else if (_event->type() == QEvent::MouseMove) {
-      BaseObjectData* object = setActiveElements(_event);
-
-      /// TODO: cannot go out of mesh at the moment...
-      // In case the mouse got out of the mesh
-      bool gotOut = false;
-
+void MeshCut::mouseDraw(QMouseEvent* _event) {
+   if (_event->type() == QEvent::MouseMove) {
+      BaseObjectData* object = setActiveElements(_event->pos());
       if (object) {
-         // Save current elements while we can
+         // Save last seen object
          latest_object_ = object;
-         latest_edge_ = active_edge_;
-      } else if (latest_object_) {
-         // Simulate the fact that we are still on the mesh and restore latest elements
-         object = latest_object_;
-         active_edge_ = latest_edge_;
-         // We can restore from prev_hit_point_ because it was last updated before
-         // getting out of the mesh. After that, we don't need it anymore.
-         active_hit_point_ = prev_hit_point_;
-         gotOut = true;
+
+         // Show path and record it
+         if (recorded_path_.size() > 1)
+            showPath(std::get<TUPLE_POINT>(recorded_path_.back()), active_hit_point_, object);
+         recorded_path_.push_back(std::make_tuple(active_hit_point_, active_face_, active_edge_));
       }
-
-      /// Triangular mesh
-      if (object && object->dataType(DATA_TRIANGLE_MESH)) {
-         TriMesh& mesh = *PluginFunctions::triMesh(object);
-
-         // Keep track of the first edge before it is crossed
-         if (active_edge_crossing_ == ACG::Vec3d(0.0)) {
-            prev_edge_ = active_edge_;
-         }
-
-         // Face has changed or mouse got out, record edge crossing
-         if (prev_face_ != active_face_ || gotOut) {  /// TODO when coming back to the previous face, be careful with the new index
-            TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(active_edge_), 0);
-
-            /// Record crossing
-            // Mouse is still over the mesh and crosses an edge
-            if (prev_face_ != -1 && active_face_ != -1) {
-               // Closest point on closest edge
-               TriMesh::Point edge_point0 = ACG::Geometry::projectToEdge(
-                        mesh.point(mesh.from_vertex_handle(heh)),
-                        mesh.point(mesh.to_vertex_handle(heh)),
-                        prev_hit_point_);
-
-               TriMesh::Point edge_point1 = ACG::Geometry::projectToEdge(
-                        mesh.point(mesh.from_vertex_handle(heh)),
-                        mesh.point(mesh.to_vertex_handle(heh)),
-                        active_hit_point_);
-
-               // The crossing is defined as the middle point of the two closest edge projections
-               active_edge_crossing_ = ACG::Vec3d((edge_point0 + edge_point1) / 2.0);
-            }
-            // Mouse is now out of the mesh
-            else if (gotOut) {
-               TriMesh::Point edge_point0 = ACG::Geometry::projectToEdge(
-                        mesh.point(mesh.from_vertex_handle(heh)),
-                        mesh.point(mesh.to_vertex_handle(heh)),
-                        active_hit_point_);
-
-               active_edge_crossing_ = ACG::Vec3d(edge_point0);
-            }
-            // Mouse came inside the mesh
-            else if (active_face_ != -1){
-               TriMesh::Point edge_point1 = ACG::Geometry::projectToEdge(
-                        mesh.point(mesh.from_vertex_handle(heh)),
-                        mesh.point(mesh.to_vertex_handle(heh)),
-                        active_hit_point_);
-
-               active_edge_crossing_ = ACG::Vec3d(edge_point1);
-            }
-
-            /// Split at previous crossing
-            if (prev_edge_crossing_ != ACG::Vec3d(0.0) &&
-                prev_edge_crossing_ != active_edge_crossing_) {
-               TriMesh::VertexHandle vh = mesh.split(mesh.edge_handle(prev_edge_), prev_edge_crossing_);
-               prev_edge_ = active_edge_;
-
-               // Newly created vertex at edge split
-               active_vertex_at_split_ = vh.idx();
-
-               /// Select edge between current split and previous split
-               if (prev_vertex_at_split_ != -1 &&
-                   prev_vertex_at_split_ != active_vertex_at_split_) {  /// TODO: should we select edge at border?
-                  // Select edge between the two vertices
-                  int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split_),
-                                                   mesh.vertex_handle(active_vertex_at_split_),
-                                                   mesh);
-                  if (edge_to_select != -1) {
-                     mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
-                  }
-                  /* No need to insist if the cursor came out of the mesh
-                   * and came back on another face */
-                  else if (!gotOut) {
-                     /// TODO: if mouse was too quick, the path still has to be created
-                     emit log(LOGWARN, "Warning! The mouse was too quick and the cut was not correctly registered.");
-                  }
-               }
-
-               // Save current vertex at split
-               prev_vertex_at_split_ = active_vertex_at_split_;
-            }
-
-            // Save current edge crossing
-            prev_edge_crossing_ = ACG::Vec3d(active_edge_crossing_);
-
-            // Now update previous edge
-            if (active_edge_ != -1)
-               prev_edge_ = active_edge_;
-
-            emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-            emit updateView();
-         }
-
+      // The mouse got out of the mesh
+      else if (!visible_path_.empty()) {
+         applyCurve(latest_object_);
       }
-      /// Polygonal mesh
-      else if (object && object->dataType(DATA_POLY_MESH)) {
-//         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
-         emit log(LOGWARN, "Polymesh not yet supported for drawing cuts");
-      }
-
-      // In the end, save active face and hit point
-      prev_face_ = active_face_;
-      prev_hit_point_ = ACG::Vec3d(active_hit_point_);
 
    } else if (_event->type() == QEvent::MouseButtonRelease) {
-      BaseObjectData* object = setActiveElements(_event);
+      BaseObjectData* object = setActiveElements(_event->pos());
 
-      // In case the mouse got out of the mesh
       if (!object) {
+         // Reset last active object
          object = latest_object_;
       }
 
-      if (object && object->dataType(DATA_TRIANGLE_MESH) &&
-          prev_edge_crossing_ != ACG::Vec3d(0.0) && active_vertex_at_split_ != -1) {
+      if (object && !visible_path_.empty()) {
+         applyCurve(object);
+      }
+   }
+}
+
+/** \brief Show consecutive hit points as path
+ * Make the current mouse path visible by creating lines between selected recorded hit points.
+ */
+void MeshCut::showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjectData* object) {
+   if (!object) return;
+
+   ACG::SceneGraph::LineNode* line = new ACG::SceneGraph::LineNode(
+            ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
+   line->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
+   line->set_line_width(2);
+   line->add_line(_prev_point, _curr_point);
+   line->alwaysOnTop() = true;
+
+   visible_path_.push_back(line);
+
+   emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+   emit updateView();
+}
+
+/** \brief Finalize mouse interaction
+ * Apply curve to mesh, then remove visible path and reset variables.
+ *
+ * @param object The object on which to apply a path
+ */
+void MeshCut::applyCurve(BaseObjectData *object) {
+   if (!object) return;
+
+   // Apply to mesh
+   markForSplit(object);
+   if (object->dataType(DATA_TRIANGLE_MESH)) {
+      TriMesh& mesh = *PluginFunctions::triMesh(object);
+      splitAndSelect(mesh);
+   } else if (object->dataType(DATA_POLY_MESH)) {
+      PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+      splitAndSelect(mesh);
+   }
+
+   // Clear visible path variable
+   for (std::vector<ACG::SceneGraph::LineNode*>::iterator it = visible_path_.begin(); it != visible_path_.end(); ++it) {
+      delete *it;
+   }
+   visible_path_.clear();
+
+   // Reset global variables
+   latest_object_ = 0;
+   recorded_path_.clear();
+//   while (!recorded_path_.empty()) {
+//      recorded_path_.pop_front(); /// TODO: Should we remove the last elements? or allow to connect to the next path?
+//   }
+
+   // Notify OpenFlipper of changes
+   emit log(LOGOUT, "Drew curve on mesh");
+   emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+   emit updateView();
+   emit createBackup(object->id(), "Path application", UPDATE_TOPOLOGY);
+}
+
+/** \brief Follow path and mark edges for split
+ * Edges crossed by the mouse path are stored with the crossing point for later splitting.
+ */
+void MeshCut::markForSplit(BaseObjectData* object) {
+   if (recorded_path_.size() < 2 || !object) return;
+
+   int length = 0;   /// TODO: this is a safeguard, we need to remove it eventually
+   while(!recorded_path_.empty() && length<30) {
+      emit log(LOGOUT, "loop length: " + QString::number(length));
+      ++length;
+      // Advance until there is a change of face
+      std::tuple<ACG::Vec3d,int,int> prev_point = recorded_path_.front();
+      recorded_path_.pop_front();
+      std::tuple<ACG::Vec3d,int,int> curr_point = recorded_path_.front();
+      while (!recorded_path_.empty() && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) {
+         prev_point = curr_point;
+         recorded_path_.pop_front();
+         curr_point = recorded_path_.front();
+      }
+      if (recorded_path_.empty()) return;
+
+      // Get the two points and their closest edge
+      ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
+      int prev_edge = std::get<TUPLE_EDGE>(prev_point);
+      ACG::Vec3d curr_hit_point = std::get<TUPLE_POINT>(curr_point);
+      int curr_edge = std::get<TUPLE_EDGE>(curr_point);
+
+      /// Triangle mesh
+      if (object->dataType(DATA_TRIANGLE_MESH)) {
          TriMesh& mesh = *PluginFunctions::triMesh(object);
 
-         // Finish selection
-         TriMesh::VertexHandle vh = mesh.split(mesh.edge_handle(prev_edge_), prev_edge_crossing_);
-         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split_), vh, mesh);
-         if (edge_to_select != -1) {
-            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
-         } else {
-            emit log(LOGWARN, "Warning! The mouse was too quick and the end of the cut was not correctly registered.");
+         /// Find crossing(s) and mark for split
+         // Points are on both sides of the same edge
+         if (prev_edge == curr_edge) {
+            TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(curr_edge), 0);
+
+            // Vector from previous to current point
+            ACG::Vec3d prev_to_curr = curr_hit_point - prev_hit_point;
+
+            // Distance from previous point to edge
+            double prev_point_edge_dist = ACG::Geometry::distPointLine(prev_hit_point,
+                     mesh.point(mesh.from_vertex_handle(heh)),
+                     mesh.point(mesh.to_vertex_handle(heh)));
+
+            // Distance from current point to edge
+            double curr_point_edge_dist = ACG::Geometry::distPointLine(curr_hit_point,
+                     mesh.point(mesh.from_vertex_handle(heh)),
+                     mesh.point(mesh.to_vertex_handle(heh)));
+
+            // Crossing point distance ratio
+            double ratio = prev_point_edge_dist / (prev_point_edge_dist + curr_point_edge_dist);
+
+            // Actual crossing point
+            ACG::Vec3d edge_crossing(prev_hit_point + ratio * prev_to_curr);
+
+            // Store edge crossing
+            edges_to_split_.push(std::make_pair(curr_edge, edge_crossing));
          }
+         // Points are further apart
+         else {
+            // Project end point to plane defined by triangle under first point
+            TriMesh::Normal face_normal = mesh.calc_face_normal(mesh.face_handle(std::get<TUPLE_FACE>(prev_point)));
+            ACG::Vec3d projected_end = ACG::Geometry::projectToPlane(prev_hit_point, face_normal, curr_hit_point);
+   //         Eigen::Vector3d n(face_normal[0], face_normal[1], face_normal[2]);
+            Eigen::Vector3d p0(prev_hit_point[0], prev_hit_point[1], prev_hit_point[2]);
+   //         Eigen::Hyperplane<double,3> plane(n, p0);
+   //         Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
+   //         Eigen::Vector3d p1 = plane.projection(curr_p);
+            Eigen::Vector3d p1(projected_end[0],projected_end[1],projected_end[2]);
 
-         emit log(LOGOUT, "Drew TriMesh cut");
-         emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-         emit updateView();
-         emit createBackup(object->id(), "Selected drawing edges", UPDATE_TOPOLOGY);
+            /// DEBUG
+   //         ACG::SceneGraph::LineNode* debug_projline = new ACG::SceneGraph::LineNode(
+   //                  ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
+   //         debug_projline->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
+   //         debug_projline->set_line_width(2);
+   //         debug_projline->add_line(ACG::Vec3d(p0[0],p0[1],p0[2]), ACG::Vec3d(p1[0],p1[1],p1[2]));
+   //         debug_projline->alwaysOnTop() = true;
+   //         visible_stuff_.push_back(debug_projline);
+            /// END DEBUG
 
-      } else if (object && object->dataType(DATA_POLY_MESH)) {
-         emit log(LOGWARN, "Polymesh not yet supported for drawing cuts");
+            // Find crossed edge and point
+            Eigen::Vector3d intersection_point;
+            int crossed_edge_idx = -1;
+            TriMesh::HalfedgeHandle crossed_halfedge;
+            TriMesh::FaceHalfedgeIter fh_it = mesh.fh_iter(mesh.face_handle(std::get<TUPLE_FACE>(prev_point)));
+            for (; fh_it; ++fh_it) {
+               TriMesh::Point point_from = mesh.point(mesh.from_vertex_handle(*fh_it));
+               Eigen::Vector3d q0(point_from[0], point_from[1], point_from[2]);
+               TriMesh::Point point_to = mesh.point(mesh.to_vertex_handle(*fh_it));
+               Eigen::Vector3d q1(point_to[0], point_to[1], point_to[2]);
+
+               // Get intersection point
+               if (segmentsIntersect(p0, p1, q0, q1, &intersection_point)) {
+                  crossed_edge_idx = mesh.edge_handle(*fh_it).idx();
+                  crossed_halfedge = *fh_it;
+                  break;
+               }
+            }
+
+            if (crossed_edge_idx == -1) {
+               emit log(LOGERR, "Could not find segment intersection");
+               return;
+            }
+
+            // Mark edge and crossing point
+            ACG::Vec3d crossing(intersection_point[0], intersection_point[1], intersection_point[2]);
+            edges_to_split_.push(std::make_pair(crossed_edge_idx, crossing));
+
+            /// DEBUG
+   //         ACG::SceneGraph::LineNode* debug_crosspoint = new ACG::SceneGraph::LineNode(
+   //                  ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
+   //         debug_crosspoint->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
+   //         debug_crosspoint->set_line_width(2);
+   //         debug_crosspoint->add_line(crossing, ACG::Vec3d(0.0));
+   //         debug_crosspoint->alwaysOnTop() = true;
+   //         visible_stuff_.push_back(debug_crosspoint);
+            /// END DEBUG
+
+            // Add new point to recorded path with next face
+            int next_face_idx = mesh.face_handle(mesh.opposite_halfedge_handle(crossed_halfedge)).idx();
+            recorded_path_.push_front(std::make_tuple(crossing, next_face_idx, crossed_edge_idx));
+         }
+         emit log(LOGOUT, "recorded path size: " + QString::number(recorded_path_.size()));
       }
+      /// Polygonal mesh
+      else if (object->dataType(DATA_POLY_MESH)) {
+         return;
+      }
+   }
+}
 
-      // Reset all saved components
-      latest_object_ = 0;
-      latest_edge_ = -1;
-      prev_face_ = -1;
-      prev_edge_ = -1;
-      prev_hit_point_ = ACG::Vec3d(0.0);
-      active_edge_crossing_ = ACG::Vec3d(0.0);
-      prev_edge_crossing_ = ACG::Vec3d(0.0);
-      active_vertex_at_split_ = -1;
-      prev_vertex_at_split_ = -1;
+/** \brief Find if two segments intersect and set intersection_point if appropriate
+ * Thanks to Ronald Goldman, on "Intersection of two lines in three-space" in Graphics Gems 1st ed., p.304
+ *
+ * Find intersection between lines defined by (p0, p1) and (q0, q1)
+ */
+bool MeshCut::segmentsIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
+                                Eigen::Vector3d q0, Eigen::Vector3d q1,
+                                Eigen::Vector3d *intersection_point) {
+
+   // Vectors from start to end of each segment
+   Eigen::Vector3d vp = p1 - p0;
+   Eigen::Vector3d vq = q1 - q0;
+
+   // Precompute difference and cross product
+   Eigen::Vector3d diff = q0 - p0;
+   Eigen::Vector3d cross_prod = vp.cross(vq);
+
+   // Numerators
+   double nomT = (diff.cross(vq)).dot(cross_prod);
+   double nomS = (diff.cross(vp)).dot(cross_prod);
+
+   // Denominator
+   double denom = cross_prod.norm() * cross_prod.norm();
+
+   if (denom == 0) {
+      if (nomS == 0 || nomT == 0) {
+         // Lines are collinear
+         emit log(LOGWARN, "Lines are collinear");
+         return false;
+      }
+      // Lines are parallel
+      emit log(LOGWARN, "Lines are parallel");
+      return false;
+   }
+
+   double t = nomT / denom;
+   double s = nomS / denom;
+
+   if (t >= 0 && t <= 1 && s >= 0 && s <= 1) {
+      // Point of interest is on the edge
+      *intersection_point = q0 + s * vq;
+      return true;
+   }
+
+   return false;
+}
+
+/** \brief Split marked edges and select new applied path
+ * TriMesh version of splitAndSelect.
+ */
+void MeshCut::splitAndSelect(TriMesh &mesh) {
+   // Vertices of new edges to select
+   std::queue<int> v_edges_to_select;
+
+   // Split
+   while (!edges_to_split_.empty()) {
+      int edge = edges_to_split_.front().first;
+      ACG::Vec3d point = edges_to_split_.front().second;
+
+      emit log(LOGOUT, "edge split " + QString::number(edge));
+
+      /// TODO: in the case of crossing an edge twice, search for correct edge
+      /// idea: signed distance to segment, then expansive search
+
+      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge), point);
+      v_edges_to_select.push(vh.idx());
+
+      edges_to_split_.pop();
+   }
+
+   // Select
+   int prev_vertex_at_split = -1;
+   while (!v_edges_to_select.empty()) {
+      int curr_vertex_at_split = v_edges_to_select.front();
+      if (prev_vertex_at_split != -1) {
+         //Find connecting edge and select
+         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
+                                           mesh.vertex_handle(curr_vertex_at_split), mesh);
+         if (edge_to_select != -1)
+            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+      }
+      prev_vertex_at_split = curr_vertex_at_split;
+
+      v_edges_to_select.pop();
+   }
+}
+
+/** \brief Split marked edges and select new applied path
+ * PolyMesh version of splitAndSelect
+ */
+void MeshCut::splitAndSelect(PolyMesh &mesh) {
+   // Vertices of new edges to select
+   std::queue<int> v_edges_to_select;
+
+   // Split
+   while (!edges_to_split_.empty()) {
+      /// TODO: path split for polymesh
+//      int edge = edges_to_split_.front().first;
+//      ACG::Vec3d point = edges_to_split_.front().second;
+
+//      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge), point);
+//      v_edges_to_select.push(vh.idx());
+
+      edges_to_split_.pop();
+   }
+
+   // Select
+   int prev_vertex_at_split = -1;
+   while (!v_edges_to_select.empty()) {
+      int curr_vertex_at_split = v_edges_to_select.front();
+      if (prev_vertex_at_split != -1) {
+         //Find connecting edge and select
+         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
+                                           mesh.vertex_handle(curr_vertex_at_split), mesh);
+         if (edge_to_select != -1)
+            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+      }
+      prev_vertex_at_split = curr_vertex_at_split;
+
+      v_edges_to_select.pop();
    }
 }
 
@@ -790,7 +966,7 @@ void MeshCut::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
  * @param vh_from the first vertex
  * @param vh_to the second vertex
  * @param mesh the mesh on which reside the vertices and edge
- * @return the index of the edge
+ * @return the index of the edge, or -1 if not found
  */
 template<typename MeshT>
 int MeshCut::edge_between(typename MeshT::VertexHandle vh_from,

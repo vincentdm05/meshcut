@@ -11,6 +11,15 @@
 #include <OpenFlipper/common/Types.hh>
 #include <ObjectTypes/PolyMesh/PolyMesh.hh>
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
+#include <ACG/Scenegraph/LineNode.hh>
+#include <eigen3/Eigen/Geometry>
+
+#include <queue>
+#include <tuple>
+
+#define TUPLE_POINT 0
+#define TUPLE_FACE 1
+#define TUPLE_EDGE 2
 
 class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface {
    Q_OBJECT
@@ -68,19 +77,42 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
    private:
       // Sets active mesh, edge and vertex
-      BaseObjectData *setActiveElements(QMouseEvent* _event);
+      BaseObjectData *setActiveElements(QPoint _pos);
+
       // Select edges to be cut
       void selectEdge(QMouseEvent* _event);
+
       // Draw line to be cut
-      void drawLine(QMouseEvent* _event);
+      void mouseDraw(QMouseEvent* _event);
+
+      // Show drawn path
+      void showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjectData *object);
+
+      // Finalize mouse interaction
+      void applyCurve(BaseObjectData* object);
+
+      // Draw closest approximation of drawn curve on mesh
+      void markForSplit(BaseObjectData *object);
+
+      // Find if two segments intersect and set intersection_point if appropriate
+      bool segmentsIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
+                            Eigen::Vector3d q0, Eigen::Vector3d q1, Eigen::Vector3d* intersection_point);
+
+      // Split marked edges and select new applied path
+      void splitAndSelect(TriMesh& mesh);
+      void splitAndSelect(PolyMesh& mesh);
+
       // Find selected edge
       void singleEdgeCut(QMouseEvent* _event);
+
       // Cut along a single edge
       template<typename MeshT>
       bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh);
+
       // Connect adjacent cuts
       template<typename MeshT>
       void connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh);
+
       // Get edge between two vertices
       template<typename MeshT>
       int edge_between(typename MeshT::VertexHandle vh_from,
@@ -96,31 +128,31 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       // Active elements set by setActiveElements()
       // Use mesh.[face|edge|vertex]_handle(idx) to access
+      ACG::Vec3d active_hit_point_;
       int active_face_;
       int active_edge_;
-      int active_vertex_;  /// Do we need that?
-      ACG::Vec3d active_hit_point_;
+      int active_vertex_;  /// TODO: Do we need that?
+
+      // Path drawn with the mouse
+      std::vector<ACG::SceneGraph::LineNode*> visible_path_;
+
+      // Real path on the mesh: hit point, hit face, closest edge
+      /// TODO: Do we need closest edge?
+      std::list<std::tuple<ACG::Vec3d,int,int> > recorded_path_;
+
+      // Queue of edge handle and crossing point pairs
+      std::queue<std::pair<int,ACG::Vec3d> > edges_to_split_;
 
       // Record of last valid object
       BaseObjectData* latest_object_;
-      int latest_edge_;
 
-      // Previously active components
-      int prev_face_;
-      int prev_edge_;
-      ACG::Vec3d prev_hit_point_;
-
-      // Edge crossings
-      ACG::Vec3d active_edge_crossing_;
-      ACG::Vec3d prev_edge_crossing_;
-
-      // Vertices at splits
-      int active_vertex_at_split_;
-      int prev_vertex_at_split_;
+      /// DEBUG
+      // Stuff to keep shown
+      std::vector<ACG::SceneGraph::LineNode*> visible_stuff_;
 
    public:
       MeshCut();
-      ~MeshCut(){}
+      ~MeshCut();
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }
