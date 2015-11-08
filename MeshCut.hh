@@ -95,7 +95,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void markForSplit(BaseObjectData *object);
 
       // Find if two segments intersect and set intersection_point if appropriate
-      bool segmentsIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
+      bool segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
                             Eigen::Vector3d q0, Eigen::Vector3d q1, Eigen::Vector3d* intersection_point);
 
       // Split marked edges and select new applied path
@@ -146,13 +146,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Record of last valid object
       BaseObjectData* latest_object_;
 
-      /// DEBUG
-      // Stuff to keep shown
-      std::vector<ACG::SceneGraph::LineNode*> visible_stuff_;
-
    public:
       MeshCut();
-      ~MeshCut();
+      ~MeshCut(){}
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }

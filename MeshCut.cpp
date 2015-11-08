@@ -10,17 +10,7 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0), selectionButtonToggled_(0),
    active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
-   visible_path_(), recorded_path_(), edges_to_split_(), latest_object_(0),
-   visible_stuff_() {}
-
-MeshCut::~MeshCut() {
-   /// This is for debug
-   if (!visible_stuff_.empty()) {
-      for (std::vector<ACG::SceneGraph::LineNode*>::iterator it = visible_stuff_.begin(); it != visible_stuff_.end(); ++it) {
-         delete *it;
-      }
-   }
-}
+   visible_path_(), recorded_path_(), edges_to_split_(), latest_object_(0) {}
 
 /** \brief Initialize plugin
  *
@@ -485,10 +475,7 @@ void MeshCut::applyCurve(BaseObjectData *object) {
 void MeshCut::markForSplit(BaseObjectData* object) {
    if (recorded_path_.size() < 2 || !object) return;
 
-   int length = 0;   /// TODO: this is a safeguard, we need to remove it eventually
-   while(!recorded_path_.empty() && length<30) {
-      emit log(LOGOUT, "loop length: " + QString::number(length));
-      ++length;
+   while(!recorded_path_.empty()) {
       // Advance until there is a change of face
       std::tuple<ACG::Vec3d,int,int> prev_point = recorded_path_.front();
       recorded_path_.pop_front();
@@ -542,22 +529,8 @@ void MeshCut::markForSplit(BaseObjectData* object) {
             // Project end point to plane defined by triangle under first point
             TriMesh::Normal face_normal = mesh.calc_face_normal(mesh.face_handle(std::get<TUPLE_FACE>(prev_point)));
             ACG::Vec3d projected_end = ACG::Geometry::projectToPlane(prev_hit_point, face_normal, curr_hit_point);
-   //         Eigen::Vector3d n(face_normal[0], face_normal[1], face_normal[2]);
             Eigen::Vector3d p0(prev_hit_point[0], prev_hit_point[1], prev_hit_point[2]);
-   //         Eigen::Hyperplane<double,3> plane(n, p0);
-   //         Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
-   //         Eigen::Vector3d p1 = plane.projection(curr_p);
             Eigen::Vector3d p1(projected_end[0],projected_end[1],projected_end[2]);
-
-            /// DEBUG
-   //         ACG::SceneGraph::LineNode* debug_projline = new ACG::SceneGraph::LineNode(
-   //                  ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
-   //         debug_projline->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
-   //         debug_projline->set_line_width(2);
-   //         debug_projline->add_line(ACG::Vec3d(p0[0],p0[1],p0[2]), ACG::Vec3d(p1[0],p1[1],p1[2]));
-   //         debug_projline->alwaysOnTop() = true;
-   //         visible_stuff_.push_back(debug_projline);
-            /// END DEBUG
 
             // Find crossed edge and point
             Eigen::Vector3d intersection_point;
@@ -571,51 +544,72 @@ void MeshCut::markForSplit(BaseObjectData* object) {
                Eigen::Vector3d q1(point_to[0], point_to[1], point_to[2]);
 
                // Get intersection point
-               if (segmentsIntersect(p0, p1, q0, q1, &intersection_point)) {
+               if (segmentIntersect(p0, p1, q0, q1, &intersection_point)) {
                   crossed_edge_idx = mesh.edge_handle(*fh_it).idx();
                   crossed_halfedge = *fh_it;
                   break;
                }
             }
-
             if (crossed_edge_idx == -1) {
                emit log(LOGERR, "Could not find segment intersection");
-               return;
+               continue;
             }
 
             // Mark edge and crossing point
             ACG::Vec3d crossing(intersection_point[0], intersection_point[1], intersection_point[2]);
             edges_to_split_.push(std::make_pair(crossed_edge_idx, crossing));
 
-            /// DEBUG
-   //         ACG::SceneGraph::LineNode* debug_crosspoint = new ACG::SceneGraph::LineNode(
-   //                  ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
-   //         debug_crosspoint->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
-   //         debug_crosspoint->set_line_width(2);
-   //         debug_crosspoint->add_line(crossing, ACG::Vec3d(0.0));
-   //         debug_crosspoint->alwaysOnTop() = true;
-   //         visible_stuff_.push_back(debug_crosspoint);
-            /// END DEBUG
+
+            // Project rest of line to next face
+            TriMesh::FaceHandle next_face = mesh.face_handle(mesh.opposite_halfedge_handle(crossed_halfedge));
+            TriMesh::Normal next_face_normal = mesh.calc_face_normal(next_face);
+            Eigen::Vector3d n(next_face_normal[0], next_face_normal[1], next_face_normal[2]);
+            p0 = Eigen::Vector3d(intersection_point);
+            Eigen::Hyperplane<double,3> plane(n, p0);
+            Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
+            p1 = plane.projection(curr_p);
+
+            // Place new point inside the triangle
+            Eigen::Vector3d point_in_face;
+            ACG::Vec3d face_centroid = mesh.calc_face_centroid(next_face);
+            Eigen::Vector3d q0(face_centroid[0], face_centroid[1], face_centroid[2]);
+            TriMesh::FaceVertexIter fv_it = mesh.fv_iter(next_face);
+            // Intersect the line with segments going from face centroid to face vertices
+            for (; fv_it; ++fv_it) {
+               ACG::Vec3d edge_point = mesh.point(*fv_it);
+               Eigen::Vector3d q1(edge_point[0], edge_point[1], edge_point[2]);
+
+               // As soon as an edge is crossed, stop: we only need one
+               if (segmentIntersect(p0, p1, q0, q1, &point_in_face)) break;
+            }
 
             // Add new point to recorded path with next face
-            int next_face_idx = mesh.face_handle(mesh.opposite_halfedge_handle(crossed_halfedge)).idx();
-            recorded_path_.push_front(std::make_tuple(crossing, next_face_idx, crossed_edge_idx));
+            recorded_path_.push_front(std::make_tuple(ACG::Vec3d(point_in_face[0], point_in_face[1], point_in_face[2]),
+                  next_face.idx(), crossed_edge_idx));
          }
-         emit log(LOGOUT, "recorded path size: " + QString::number(recorded_path_.size()));
       }
       /// Polygonal mesh
       else if (object->dataType(DATA_POLY_MESH)) {
+         emit log(LOGWARN, "No support for polymesh yet");
          return;
       }
    }
 }
 
-/** \brief Find if two segments intersect and set intersection_point if appropriate
+/** \brief Finds intersection point on segment by halfline
  * Thanks to Ronald Goldman, on "Intersection of two lines in three-space" in Graphics Gems 1st ed., p.304
  *
- * Find intersection between lines defined by (p0, p1) and (q0, q1)
+ * Find point of intersection on segment [q0, q1] by half-line [p0, p1).
+ * If no intersection is found, false is returned, otherwise intersection_point is set to the point of
+ * intersection and true is returned.
+ *
+ * @param p0 The starting point of the halfline
+ * @param p1 The point defining the direction of the halfline
+ * @param q0 The start of the segment
+ * @param q1 The end of the segment
+ * @param intersection_point A pointer to a Eigen::Vector3d object for the intersection point
  */
-bool MeshCut::segmentsIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
+bool MeshCut::segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
                                 Eigen::Vector3d q0, Eigen::Vector3d q1,
                                 Eigen::Vector3d *intersection_point) {
 
@@ -648,8 +642,7 @@ bool MeshCut::segmentsIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
    double t = nomT / denom;
    double s = nomS / denom;
 
-   if (t >= 0 && t <= 1 && s >= 0 && s <= 1) {
-      // Point of interest is on the edge
+   if (t >= 0 /*&& t <= 1*/ && s >= 0 && s <= 1) {
       *intersection_point = q0 + s * vq;
       return true;
    }
