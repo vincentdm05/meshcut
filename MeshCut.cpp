@@ -550,6 +550,8 @@ void MeshCut::markForSplit(BaseObjectData* object) {
                   break;
                }
             }
+            /// TODO: Sometimes an intersection cannot be found. Investigate whether it's because of collinearity
+            /// or because it crossed exactly on a point. (which is probably equivalent in the problem)
             if (crossed_edge_idx == -1) {
                emit log(LOGERR, "Could not find segment intersection");
                continue;
@@ -629,7 +631,7 @@ bool MeshCut::segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
    double denom = cross_prod.norm() * cross_prod.norm();
 
    if (denom == 0) {
-      if (nomS == 0 || nomT == 0) {
+      if (nomS == 0 || nomT == 0) { /// TODO: can never be 0!
          // Lines are collinear
          emit log(LOGWARN, "Lines are collinear");
          return false;
@@ -650,6 +652,26 @@ bool MeshCut::segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
    return false;
 }
 
+/** \brief Determines whether a point is on a segment or not
+ *
+ * @param p The point to evaluate
+ * @param s0 The start of the segment
+ * @param s1 The end of the segment
+ */
+bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d s1) {
+   Eigen::Vector3d segment(s1 - s0);
+   Eigen::Vector3d point_local(p - s0);
+   Eigen::Vector3d cross = point_local.cross(segment);
+   emit log(LOGOUT, "cross is " + QString::number(cross[0]) + "," + QString::number(cross[1]) + "," + QString::number(cross[2]));
+   if (cross.isZero(0.1)) {
+      emit log(LOGOUT, "cross is zero");
+      double t = point_local.dot(segment) / (segment.norm() * segment.norm());
+
+      if (t >= 0 && t <= 1) return true;
+   }
+   return false;
+}
+
 /** \brief Split marked edges and select new applied path
  * TriMesh version of splitAndSelect.
  */
@@ -657,21 +679,66 @@ void MeshCut::splitAndSelect(TriMesh &mesh) {
    // Vertices of new edges to select
    std::queue<int> v_edges_to_select;
 
+   emit log(LOGOUT, "edges to split size: " + QString::number(edges_to_split_.size()));
+
+   // Maps edges to their newly created neighbors after split
+   std::map<int,std::set<int> > edges_split;
+
    // Split
    while (!edges_to_split_.empty()) {
       int edge = edges_to_split_.front().first;
       ACG::Vec3d point = edges_to_split_.front().second;
 
-      emit log(LOGOUT, "edge split " + QString::number(edge));
+//      emit log(LOGOUT, "edge split " + QString::number(edge));
 
       /// TODO: in the case of crossing an edge twice, search for correct edge
-      /// idea: signed distance to segment, then expansive search
+      /// idea: keep track of split edges and find correct one
 
-      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge), point);
+      // Create vector for edge key
+      if (edges_split.find(edge) == edges_split.end()) {
+         std::set<int> new_edge;
+         new_edge.insert(edge);
+         edges_split[edge] = new_edge;
+      }
+
+      // Query the edge map for the correct edge
+      int edge_to_split = edge;
+      std::set<int> edges = edges_split[edge];
+      Eigen::Vector3d p(point[0], point[1], point[2]);
+      for (std::set<int>::iterator it(edges.begin()); it!=edges.end(); ++it) {
+         emit log(LOGOUT, "it is " + QString::number(*it));
+         // Find out if closest edge is still the one to split
+         TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(*it), 0);
+         ACG::Vec3d segment_start = mesh.point(mesh.from_vertex_handle(heh));
+         Eigen::Vector3d s0(segment_start[0], segment_start[1], segment_start[2]);
+         ACG::Vec3d segment_end = mesh.point(mesh.to_vertex_handle(heh));
+         Eigen::Vector3d s1(segment_end[0], segment_end[1], segment_end[2]);
+         if (isOnSegment(p, s0, s1)) {
+            edge_to_split = *it;
+            break;
+         }
+      }
+
+      emit log(LOGOUT, "edge to split is " + QString::number(edge_to_split));
+
+      // Split edge
+      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge_to_split), point);
       v_edges_to_select.push(vh.idx());
+
+      // Store index of newly created edge
+      // Assumptions: a new edge has the last index.
+      // Split performs between 1 and 3 new_edge inserts, of which our new edge is the first.
+      int new_edge_idx = mesh.n_edges() - 1;
+      TriMesh::HalfedgeHandle heh0 = mesh.halfedge_handle(mesh.edge_handle(edge), 0);
+      if (!mesh.is_boundary(heh0)) --new_edge_idx;
+      TriMesh::HalfedgeHandle heh1 = mesh.halfedge_handle(mesh.edge_handle(edge), 1);
+      if (!mesh.is_boundary(heh1)) --new_edge_idx;
+      emit log(LOGOUT, "new edge idx is " + QString::number(new_edge_idx));
+      edges_split[edge].insert(new_edge_idx);
 
       edges_to_split_.pop();
    }
+   edges_split.clear();
 
    // Select
    int prev_vertex_at_split = -1;

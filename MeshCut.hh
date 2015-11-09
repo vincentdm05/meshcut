@@ -98,6 +98,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       bool segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
                             Eigen::Vector3d q0, Eigen::Vector3d q1, Eigen::Vector3d* intersection_point);
 
+      // Determine whether a point lies on a segment
+      bool isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d s1);
+
       // Split marked edges and select new applied path
       void splitAndSelect(TriMesh& mesh);
       void splitAndSelect(PolyMesh& mesh);
