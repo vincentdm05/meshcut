@@ -657,16 +657,23 @@ bool MeshCut::segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
  * @param p The point to evaluate
  * @param s0 The start of the segment
  * @param s1 The end of the segment
+ * @param prec The precision asked of the comparison between cross product and zero
  */
-bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d s1) {
-   Eigen::Vector3d segment(s1 - s0);
-   Eigen::Vector3d point_local(p - s0);
+bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d s1, double prec = 0.05) {
+   // Increase precision by taking furthest point
+   Eigen::Vector3d segment;
+   Eigen::Vector3d point_local;
+   if ((p-s0).norm() > (p-s1).norm()) {
+      segment = s1 - s0;
+      point_local = p - s0;
+   } else {
+      segment = s0 - s1;
+      point_local = p - s1;
+   }
    Eigen::Vector3d cross = point_local.cross(segment);
-   emit log(LOGOUT, "cross is " + QString::number(cross[0]) + "," + QString::number(cross[1]) + "," + QString::number(cross[2]));
-   if (cross.isZero(0.1)) {
-      emit log(LOGOUT, "cross is zero");
+   if (cross.isZero(prec)) {
       double t = point_local.dot(segment) / (segment.norm() * segment.norm());
-
+      // Point is in range
       if (t >= 0 && t <= 1) return true;
    }
    return false;
