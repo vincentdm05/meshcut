@@ -419,7 +419,7 @@ void MeshCut::showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjec
    if (!object) return;
 
    ACG::SceneGraph::LineNode* line = new ACG::SceneGraph::LineNode(
-            ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode(), "Pathline");
+            ACG::SceneGraph::LineNode::LineSegmentsMode, object->manipulatorNode());
    line->set_color(OpenMesh::Vec4f(1.0f,0.0f,0.0f,1.0f));
    line->set_line_width(2);
    line->add_line(_prev_point, _curr_point);
@@ -659,10 +659,11 @@ bool MeshCut::segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
  * @param s1 The end of the segment
  * @param prec The precision asked of the comparison between cross product and zero
  */
-bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d s1, double prec = 0.05) {
+template<typename VecType>
+bool MeshCut::isOnSegment(VecType p, VecType s0, VecType s1, double prec) {
    // Increase precision by taking furthest point
-   Eigen::Vector3d segment;
-   Eigen::Vector3d point_local;
+   VecType segment;
+   VecType point_local;
    if ((p-s0).norm() > (p-s1).norm()) {
       segment = s1 - s0;
       point_local = p - s0;
@@ -670,7 +671,7 @@ bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d
       segment = s0 - s1;
       point_local = p - s1;
    }
-   Eigen::Vector3d cross = point_local.cross(segment);
+   VecType cross = point_local.cross(segment);
    if (cross.isZero(prec)) {
       double t = point_local.dot(segment) / (segment.norm() * segment.norm());
       // Point is in range
@@ -680,13 +681,18 @@ bool MeshCut::isOnSegment(Eigen::Vector3d p, Eigen::Vector3d s0, Eigen::Vector3d
 }
 
 /** \brief Split marked edges and select new applied path
- * TriMesh version of splitAndSelect.
+ *
+ * Go through all the marked edge-point pair and check whether the edge has already been
+ * split before. If it is the case, find the correct edge index and split.
+ * For all the new vertices created from split, connect (for PolyMesh) them and select the
+ * new edge.
+ *
+ * @param mesh The mesh
  */
-void MeshCut::splitAndSelect(TriMesh &mesh) {
+template<typename MeshT>
+void MeshCut::splitAndSelect(MeshT &mesh) {
    // Vertices of new edges to select
    std::queue<int> v_edges_to_select;
-
-   emit log(LOGOUT, "edges to split size: " + QString::number(edges_to_split_.size()));
 
    // Maps edges to their newly created neighbors after split
    std::map<int,std::set<int> > edges_split;
@@ -696,12 +702,7 @@ void MeshCut::splitAndSelect(TriMesh &mesh) {
       int edge = edges_to_split_.front().first;
       ACG::Vec3d point = edges_to_split_.front().second;
 
-//      emit log(LOGOUT, "edge split " + QString::number(edge));
-
-      /// TODO: in the case of crossing an edge twice, search for correct edge
-      /// idea: keep track of split edges and find correct one
-
-      // Create vector for edge key
+      // Create vector for edge map
       if (edges_split.find(edge) == edges_split.end()) {
          std::set<int> new_edge;
          new_edge.insert(edge);
@@ -713,34 +714,33 @@ void MeshCut::splitAndSelect(TriMesh &mesh) {
       std::set<int> edges = edges_split[edge];
       Eigen::Vector3d p(point[0], point[1], point[2]);
       for (std::set<int>::iterator it(edges.begin()); it!=edges.end(); ++it) {
-         emit log(LOGOUT, "it is " + QString::number(*it));
          // Find out if closest edge is still the one to split
          TriMesh::HalfedgeHandle heh = mesh.halfedge_handle(mesh.edge_handle(*it), 0);
          ACG::Vec3d segment_start = mesh.point(mesh.from_vertex_handle(heh));
          Eigen::Vector3d s0(segment_start[0], segment_start[1], segment_start[2]);
          ACG::Vec3d segment_end = mesh.point(mesh.to_vertex_handle(heh));
          Eigen::Vector3d s1(segment_end[0], segment_end[1], segment_end[2]);
-         if (isOnSegment(p, s0, s1)) {
+         if (isOnSegment(p, s0, s1, 0.05)) {
             edge_to_split = *it;
             break;
          }
       }
 
-      emit log(LOGOUT, "edge to split is " + QString::number(edge_to_split));
-
       // Split edge
-      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge_to_split), point);
+      typename MeshT::VertexHandle vh = mesh.add_vertex(point);
+      mesh.split(mesh.edge_handle(edge_to_split), vh);
       v_edges_to_select.push(vh.idx());
 
       // Store index of newly created edge
-      // Assumptions: a new edge has the last index.
-      // Split performs between 1 and 3 new_edge inserts, of which our new edge is the first.
+      /// Assumptions: a new edge has the latest index; TriMesh split performs between 1 and 3
+      /// new_edge inserts (depending on boundary conditions), of which our new edge is the first.
       int new_edge_idx = mesh.n_edges() - 1;
-      TriMesh::HalfedgeHandle heh0 = mesh.halfedge_handle(mesh.edge_handle(edge), 0);
-      if (!mesh.is_boundary(heh0)) --new_edge_idx;
-      TriMesh::HalfedgeHandle heh1 = mesh.halfedge_handle(mesh.edge_handle(edge), 1);
-      if (!mesh.is_boundary(heh1)) --new_edge_idx;
-      emit log(LOGOUT, "new edge idx is " + QString::number(new_edge_idx));
+      if (mesh.is_trimesh()) {
+         typename MeshT::HalfedgeHandle heh0 = mesh.halfedge_handle(mesh.edge_handle(edge), 0);
+         if (!mesh.is_boundary(heh0)) --new_edge_idx;
+         typename MeshT::HalfedgeHandle heh1 = mesh.halfedge_handle(mesh.edge_handle(edge), 1);
+         if (!mesh.is_boundary(heh1)) --new_edge_idx;
+      }
       edges_split[edge].insert(new_edge_idx);
 
       edges_to_split_.pop();
@@ -752,47 +752,21 @@ void MeshCut::splitAndSelect(TriMesh &mesh) {
    while (!v_edges_to_select.empty()) {
       int curr_vertex_at_split = v_edges_to_select.front();
       if (prev_vertex_at_split != -1) {
-         //Find connecting edge and select
-         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
-                                           mesh.vertex_handle(curr_vertex_at_split), mesh);
-         if (edge_to_select != -1)
-            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
-      }
-      prev_vertex_at_split = curr_vertex_at_split;
+         if (mesh.is_trimesh()) {
+            //Find connecting edge and select
+            int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
+                                              mesh.vertex_handle(curr_vertex_at_split), mesh);
+            if (edge_to_select != -1)
+               mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+         } else if (mesh.is_polymesh()) {
+            // Create edge
+            typename MeshT::HalfedgeHandle new_heh = mesh.new_edge(mesh.vertex_handle(prev_vertex_at_split),
+                                                        mesh.vertex_handle(curr_vertex_at_split));
+            /// TODO: handle connectivity like in polyconnectivity::split_edge
 
-      v_edges_to_select.pop();
-   }
-}
-
-/** \brief Split marked edges and select new applied path
- * PolyMesh version of splitAndSelect
- */
-void MeshCut::splitAndSelect(PolyMesh &mesh) {
-   // Vertices of new edges to select
-   std::queue<int> v_edges_to_select;
-
-   // Split
-   while (!edges_to_split_.empty()) {
-      /// TODO: path split for polymesh
-//      int edge = edges_to_split_.front().first;
-//      ACG::Vec3d point = edges_to_split_.front().second;
-
-//      TriMesh::VertexHandle vh = mesh.split_copy(mesh.edge_handle(edge), point);
-//      v_edges_to_select.push(vh.idx());
-
-      edges_to_split_.pop();
-   }
-
-   // Select
-   int prev_vertex_at_split = -1;
-   while (!v_edges_to_select.empty()) {
-      int curr_vertex_at_split = v_edges_to_select.front();
-      if (prev_vertex_at_split != -1) {
-         //Find connecting edge and select
-         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
-                                           mesh.vertex_handle(curr_vertex_at_split), mesh);
-         if (edge_to_select != -1)
-            mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+            // Select new edge
+            mesh.status(mesh.edge_handle(new_heh)).set_selected(true);
+         }
       }
       prev_vertex_at_split = curr_vertex_at_split;
 
@@ -806,7 +780,8 @@ void MeshCut::splitAndSelect(PolyMesh &mesh) {
  */
 void MeshCut::slotCutSelectedEdges() {
    // Iterate over all objects
-   for (PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS); o_it != PluginFunctions::objectsEnd(); ++o_it) {
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
 
@@ -847,9 +822,8 @@ void MeshCut::slotCutSelectedEdges() {
 
 /** \brief Cut along edge
  *
- * For TriMesh only.
  * Look at the surrounding topology of the edge and cut along it.
- * This schematic shows how the middle edge relates to its
+ * The following schematic shows how the middle edge relates to its
  * surroundings.
  *
  *              up vertex

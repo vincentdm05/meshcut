@@ -2,7 +2,8 @@ include (plugin)
 openflipper_plugin ( INSTALLDATA Icons )
 
 # For CGAL and Boost
-set(CMAKE_CXX_FLAGS "-lboost_system -lCGAL -lCGAL_Core -frounding-math ${CMAKE_CXX_FLAGS}")
+set(CMAKE_MODULE_LINKER_FLAGS "-lboost_system -lCGAL -lCGAL_Core ${CMAKE_MODULE_LINKER_FLAGS}")
+set(CMAKE_CXX_FLAGS "-frounding-math ${CMAKE_CXX_FLAGS}")
 
 
 # Compiler flags
