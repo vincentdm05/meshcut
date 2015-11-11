@@ -17,6 +17,8 @@
 #include <queue>
 #include <tuple>
 
+#include "Cutting.hh"
+
 #define TUPLE_POINT 0
 #define TUPLE_FACE 1
 #define TUPLE_EDGE 2
@@ -30,6 +32,10 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
    Q_INTERFACES(LoggingInterface)
    Q_INTERFACES(PickingInterface)
    Q_INTERFACES(BackupInterface)
+
+#if QT_VERSION >= 0x050000
+  Q_PLUGIN_METADATA(IID "org.OpenFlipper.Plugins.Plugin-MeshCut")
+#endif
 
    signals:
       // BaseInterface
@@ -79,6 +85,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Sets active mesh, edge and vertex
       BaseObjectData *setActiveElements(QPoint _pos);
 
+      // Find selected edge
+      void singleEdgeCut(QMouseEvent* _event);
+
       // Select edges to be cut
       void selectEdge(QMouseEvent* _event);
 
@@ -106,9 +115,6 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       template<typename MeshT>
       void splitAndSelect(MeshT& mesh);
 
-      // Find selected edge
-      void singleEdgeCut(QMouseEvent* _event);
-
       // Cut along a single edge
       template<typename MeshT>
       bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh);
@@ -130,6 +136,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // 0 none toggled, 1 select edges, 2 draw line
       size_t selectionButtonToggled_;
 
+      Cutting* cutting_;
+
       // Active elements set by setActiveElements()
       // Use mesh.[face|edge|vertex]_handle(idx) to access
       ACG::Vec3d active_hit_point_;
@@ -141,7 +149,6 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       std::vector<ACG::SceneGraph::LineNode*> visible_path_;
 
       // Real path on the mesh: hit point, hit face, closest edge
-      /// TODO: Do we need closest edge?
       std::list<std::tuple<ACG::Vec3d,int,int> > recorded_path_;
 
       // Queue of edge handle and crossing point pairs
@@ -152,7 +159,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
    public:
       MeshCut();
-      ~MeshCut(){}
+      ~MeshCut(){delete cutting_;}
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }
