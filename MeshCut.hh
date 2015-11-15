@@ -14,14 +14,12 @@
 #include <ACG/Scenegraph/LineNode.hh>
 #include <eigen3/Eigen/Geometry>
 
+#include <QCheckBox>
+
 #include <queue>
 #include <tuple>
 
 #include "Cutting.hh"
-
-#define TUPLE_POINT 0
-#define TUPLE_FACE 1
-#define TUPLE_EDGE 2
 
 class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface {
    Q_OBJECT
@@ -69,7 +67,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // MouseInterface
       void slotMouseEvent(QMouseEvent* _event);
 
-      // Called when an action on the toolbar was triggered
+      // Called when toolbar is clicked
       void toolBarTriggered(QAction* _action);
 
       // Cut mode selection
@@ -99,9 +97,6 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       // Finalize mouse interaction
       void applyCurve(BaseObjectData* object);
-
-      // Draw closest approximation of drawn curve on mesh
-      void markForSplit(BaseObjectData *object);
 
       // Find if two segments intersect and set intersection_point if appropriate
       bool segmentIntersect(Eigen::Vector3d p0, Eigen::Vector3d p1,
@@ -133,10 +128,11 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QWidget* toolBox_;
       QPushButton* selectButton_;
       QPushButton* drawButton_;
+      QCheckBox* directCutCheckBox_;
       // 0 none toggled, 1 select edges, 2 draw line
       size_t selectionButtonToggled_;
 
-      Cutting* cutting_;
+      Cutting* cutting_tools_;
 
       // Active elements set by setActiveElements()
       // Use mesh.[face|edge|vertex]_handle(idx) to access
@@ -148,18 +144,12 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Path drawn with the mouse
       std::vector<ACG::SceneGraph::LineNode*> visible_path_;
 
-      // Real path on the mesh: hit point, hit face, closest edge
-      std::list<std::tuple<ACG::Vec3d,int,int> > recorded_path_;
-
-      // Queue of edge handle and crossing point pairs
-      std::queue<std::pair<int,ACG::Vec3d> > edges_to_split_;
-
       // Record of last valid object
       BaseObjectData* latest_object_;
 
    public:
       MeshCut();
-      ~MeshCut(){delete cutting_;}
+      ~MeshCut(){delete cutting_tools_;}
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }

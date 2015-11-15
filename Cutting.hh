@@ -9,6 +9,18 @@
 #include <queue>
 #include <tuple>
 
+#define TUPLE_POINT 0
+#define TUPLE_FACE 1
+#define TUPLE_EDGE 2
+
+#define INTERSECT_NO -1
+#define INTERSECT_COLLINEAR 0
+#define INTERSECT_PARALLEL 1
+#define INTERSECT_OK 2
+
+#define PATH_FRONT 0
+#define PATH_BACK 1
+
 class Cutting : QObject, LoggingInterface {
    Q_OBJECT
    Q_INTERFACES(LoggingInterface)
@@ -19,6 +31,9 @@ signals:
    void log(QString _message);
 
 private:
+   typedef std::tuple<ACG::Vec3d,int,int> PathPoint;
+   typedef std::list<PathPoint> Path;
+
    // Determine whether a point lies on a segment
    template<typename VecType>
    bool isOnSegment(VecType p, VecType s0, VecType s1, double prec = 0.05);
@@ -32,12 +47,21 @@ private:
    template<typename MeshT>
    void connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh);
 
+   // Mouse-recorded path on the mesh: hit point, hit face, closest edge
+   Path recorded_path_;
+
    // Queue of edge handle and crossing point pairs
    std::queue<std::pair<int,ACG::Vec3d> > edges_to_split_;
 
+   // Number of faces over which a cut can be made
+   unsigned int face_overs_;
+
 public:
-   Cutting() : edges_to_split_() {}
+   Cutting() : recorded_path_(0), edges_to_split_(), face_overs_(0) {}
    ~Cutting(){}
+
+   // Draw closest approximation of drawn curve on mesh
+   void markForSplit(BaseObjectData* object);
 
    // Split marked edges and select new applied path
    template<typename MeshT>
@@ -45,16 +69,51 @@ public:
 
    // Find if two segments intersect and set intersection_point if appropriate
    template<typename VecType>
-   bool segmentIntersect(VecType p0, VecType p1,
-                         VecType q0, VecType q1, VecType* intersection_point);
+   int segmentIntersect(VecType p0, VecType p1,
+                         VecType q0, VecType q1, VecType* intersection_point, double prec = 1e-16);
 
    // Cut along a single edge
    template<typename MeshT>
    bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh);
 
-   // Getters & setters
-   void setEdgesToSplit(std::queue<std::pair<int,ACG::Vec3d> > *_edges_to_split) {
-      edges_to_split_ = std::queue<std::pair<int,ACG::Vec3d> >(*_edges_to_split);
+   /// Setters for mouse-recorded path
+   void addPathPoint(PathPoint _point) {
+      if (!recorded_path_.empty() && std::get<TUPLE_FACE>(_point) != std::get<TUPLE_FACE>(recorded_path_.back())) {
+         ++face_overs_;
+      }
+      recorded_path_.push_back(_point);
+   }
+
+   void clearPath() {
+      recorded_path_.clear();
+   }
+
+   /// Getters for path
+   /**
+    * @brief getPathPoint get the point at either side of the path
+    * @param side Either PATH_FRONT or PATH_BACK
+    * @return A copy of the path point
+    */
+   PathPoint getPathPoint(int _side = PATH_FRONT) {
+      switch(_side) {
+      case PATH_BACK:
+         return PathPoint(recorded_path_.back());
+      default:
+         return PathPoint(recorded_path_.front());
+      }
+   }
+
+   unsigned int pathSize() {
+      return recorded_path_.size();
+   }
+
+   bool pathEmpty() {
+      return recorded_path_.empty();
+   }
+
+   // Get number of faces that went under the mouse path
+   unsigned int faceOvers() {
+      return face_overs_;
    }
 };
 
@@ -75,9 +134,10 @@ public:
  * @param q0 The start of the segment
  * @param q1 The end of the segment
  * @param intersection_point A pointer to a Eigen::Vector3d object for the intersection point
+ * @param prec The precision with which to define collinearity and parallelism
  */
 template<typename VecType>
-bool Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, VecType *intersection_point) {
+int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, VecType *intersection_point, double prec) {
 
    // Vectors from start to end of each segment
    VecType vp = p1 - p0;
@@ -94,26 +154,25 @@ bool Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, V
    // Denominator
    double denom = cross_prod.norm() * cross_prod.norm();
 
-   if (denom == 0) {
-      if (nomS == 0 || nomT == 0) { /// TODO: can never be 0!
+   emit log(LOGOUT, "denom: " + QString::number(denom) + " ;nomS: " + QString::number(nomS) + " ;nomT: " + QString::number(nomT));
+   if (denom < prec) {
+      if (nomS < prec || nomT < prec) {
          // Lines are collinear
-         emit log(LOGWARN, "Lines are collinear");
-         return false;
+         return INTERSECT_COLLINEAR;
       }
       // Lines are parallel
-      emit log(LOGWARN, "Lines are parallel");
-      return false;
+      return INTERSECT_PARALLEL;
    }
 
    double t = nomT / denom;
    double s = nomS / denom;
 
-   if (t >= 0 /*&& t <= 1*/ && s >= 0 && s <= 1) {
+   if (t >= 0 && s >= 0 && s <= 1) {
       *intersection_point = q0 + s * vq;
-      return true;
+      return INTERSECT_OK;
    }
 
-   return false;
+   return INTERSECT_NO;
 }
 
 /** \brief Determines whether a point is on a segment or not
@@ -193,6 +252,7 @@ void Cutting::splitAndSelect(MeshT &mesh) {
       // Split edge
       typename MeshT::VertexHandle vh = mesh.add_vertex(point);
       mesh.split(mesh.edge_handle(edge_to_split), vh);
+      --face_overs_;
       v_edges_to_select.push(vh.idx());
 
       // Store index of newly created edge
