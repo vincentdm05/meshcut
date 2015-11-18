@@ -7,17 +7,33 @@
 void Cutting::markForSplit(BaseObjectData* object) {
    if (recorded_path_.size() < 2 || !object) return;
 
-   while(!recorded_path_.empty()) {
+   // This is only a hack to prevent oscillating and getting into an infinite loop
+   std::pair<int,int> infinite_loop_breaker[3];
+
+   while(recorded_path_.size() > 1) {
       // Advance until there is a change of face
       PathPoint prev_point = recorded_path_.front();
       recorded_path_.pop_front();
       PathPoint curr_point = recorded_path_.front();
-      while (!recorded_path_.empty() && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) {
+      while (recorded_path_.size() > 1 && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) {
          prev_point = curr_point;
          recorded_path_.pop_front();
          curr_point = recorded_path_.front();
       }
-      if (recorded_path_.empty()) break;
+      if (recorded_path_.empty() && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) break;
+
+      /// TODO: Find and correct bug so that we don't need that
+      infinite_loop_breaker[0] = infinite_loop_breaker[1];
+      infinite_loop_breaker[1] = infinite_loop_breaker[2];
+      infinite_loop_breaker[2] = std::make_pair(std::get<TUPLE_FACE>(prev_point), std::get<TUPLE_FACE>(curr_point));
+//      std::cout << std::get<TUPLE_FACE>(prev_point) << " " << std::get<TUPLE_FACE>(curr_point) << std::endl;
+      if ((infinite_loop_breaker[2].second == infinite_loop_breaker[1].second &&
+           infinite_loop_breaker[2].first == infinite_loop_breaker[1].first) ||
+          (infinite_loop_breaker[2].second == infinite_loop_breaker[0].second &&
+           infinite_loop_breaker[2].first == infinite_loop_breaker[0].first)) {
+         recorded_path_.pop_front();
+         continue;
+      }
 
       // Get the two points and their closest edge
       ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
@@ -88,13 +104,16 @@ void Cutting::markForSplit(BaseObjectData* object) {
                   Eigen::Vector3d q0(mesh.point(vh0)[0], mesh.point(vh0)[1], mesh.point(vh0)[2]);
                   Eigen::Vector3d q1(mesh.point(vh1)[0], mesh.point(vh1)[1], mesh.point(vh1)[2]);
 
+                  // Check intersection with opposite edge
                   Eigen::Vector3d intersect_on_facing_edge;
                   int intersect_status = segmentIntersect(intersection_point, proj_end, q0, q1, &intersect_on_facing_edge);
-                  if (intersect_status == INTERSECT_OK || intersect_status == INTERSECT_COLLINEAR) {
+                  if ((intersect_status == INTERSECT_OK || intersect_status == INTERSECT_COLLINEAR) &&
+                      !(intersect_on_facing_edge - intersection_point).isZero(1e-5)) {
                      next_face_idx = (*vfit).idx();
                      break;
                   }
 
+                  // Go to next face
                   if (!mesh.is_boundary(vh0) && !mesh.is_boundary(vh1)) ++vfit;
                   vh0 = vh1;
                }
@@ -128,7 +147,8 @@ void Cutting::markForSplit(BaseObjectData* object) {
                Eigen::Vector3d q1(edge_point[0], edge_point[1], edge_point[2]);
 
                // As soon as an edge is crossed, stop: we only need one
-               if (segmentIntersect(p0, p1, q0, q1, &point_in_face) == INTERSECT_OK) break;
+               if (segmentIntersect(p0, p1, q0, q1, &point_in_face) == INTERSECT_OK &&
+                   !(point_in_face - p0).isZero(1e-5)) break;
             }
 
             // Add new point to recorded path with next face
