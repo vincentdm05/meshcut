@@ -311,21 +311,20 @@ template<typename MeshT>
 void Cutting::clampAndSelect(MeshT& mesh) {
    if (recorded_path_.size() < 2) return;
 
-   // First find beginning of path
-   PathPoint prev_point = recorded_path_.front();
-   recorded_path_.pop_front();
-   int prev_path_vertex = std::get<TUPLE_VERTEX>(prev_point);
-   v_edges_to_select_.push(prev_path_vertex);
+   // Get first point of curve
+   v_edges_to_select_.push(std::get<TUPLE_VERTEX>(recorded_path_.front()));
 
-   PathPoint curr_point;
-   while (!recorded_path_.empty()) {
+   while (recorded_path_.size() > 1) {
       // Advance until there is a change of vertex
-      curr_point = recorded_path_.front();
+      PathPoint prev_point = recorded_path_.front();
+      recorded_path_.pop_front();
+      PathPoint curr_point = recorded_path_.front();
       while (!recorded_path_.empty() && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) {
          prev_point = curr_point;
          recorded_path_.pop_front();
          curr_point = recorded_path_.front();
       }
+      if (recorded_path_.empty() && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) break;
 
       // Get the two points and their closest edge
       ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
@@ -348,9 +347,9 @@ void Cutting::clampAndSelect(MeshT& mesh) {
          Eigen::Vector3d face_crossing = findOutgoingFaceCrossing(p0, p1, prev_face.idx(), crossed_edge_idx, mesh);
 
          // Get next vertex on path
-         prev_path_vertex = closestVertexOnFace(face_crossing, prev_face.idx(), mesh);
-         if (prev_path_vertex != v_edges_to_select_.front())
-            v_edges_to_select_.push(prev_path_vertex);
+         curr_path_vertex = closestVertexOnFace(face_crossing, prev_face.idx(), mesh);
+         if (curr_path_vertex != v_edges_to_select_.front())
+            v_edges_to_select_.push(curr_path_vertex);
 
          // Project path to next face
          /// TODO
