@@ -1,7 +1,6 @@
 #ifndef CUTTING
 #define CUTTING
 
-#include <OpenFlipper/BasePlugin/LoggingInterface.hh>
 #include <OpenFlipper/common/Types.hh>
 #include <ObjectTypes/PolyMesh/PolyMesh.hh>
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
@@ -12,6 +11,7 @@
 #define TUPLE_POINT 0
 #define TUPLE_FACE 1
 #define TUPLE_EDGE 2
+#define TUPLE_VERTEX 3
 
 #define INTERSECT_NO -1
 #define INTERSECT_COLLINEAR 0
@@ -21,18 +21,15 @@
 #define PATH_FRONT 0
 #define PATH_BACK 1
 
-class Cutting : QObject, LoggingInterface {
-   Q_OBJECT
-   Q_INTERFACES(LoggingInterface)
-
-signals:
-   // LoggingInterface
-   void log(Logtype _type, QString _message);
-   void log(QString _message);
+class Cutting {
 
 private:
-   typedef std::tuple<ACG::Vec3d,int,int> PathPoint;
+   typedef std::tuple<ACG::Vec3d,int,int,int> PathPoint;
    typedef std::list<PathPoint> Path;
+
+   // Select edges that have been marked
+   template<typename MeshT>
+   void selectMarkedEdges(MeshT& mesh);
 
    // Determine whether a point lies on a segment
    template<typename VecType>
@@ -43,12 +40,32 @@ private:
    int edge_between(typename MeshT::VertexHandle vh_from,
                     typename MeshT::VertexHandle vh_to, MeshT& mesh);
 
+   // Get index of vertex connected to a known vertex
+   template<typename Vec3Type, typename MeshT>
+   int closest_connected_vertex(int vidx_from, Vec3Type p_to, MeshT& mesh);
+
    // Connect adjacent cuts
    template<typename MeshT>
    void connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh);
 
+   // Find closest vertex to hit point on a face
+   template<typename Vec3Type, typename MeshT>
+   int closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh);
+
+   // Find point of crossing a face outward
+   template<typename Vec3Type, typename MeshT>
+   Vec3Type findOutgoingFaceCrossing(const Vec3Type _point_inside, const Vec3Type _point_outside,
+                                    int _face_idx, int& crossed_edge_idx, MeshT& mesh);
+
+   // Given a triangle and a point, project point to plane defined by triangle
+   template<typename Vec3Type, typename MeshT>
+   Vec3Type projectToFacePlane(Vec3Type _point_to_project, int _face_idx, MeshT mesh);
+
    // Mouse-recorded path on the mesh: hit point, hit face, closest edge
    Path recorded_path_;
+
+   // Vertices of new edges to select
+   std::queue<int> v_edges_to_select_;
 
    // Queue of edge handle and crossing point pairs
    std::queue<std::pair<int,ACG::Vec3d> > edges_to_split_;
@@ -57,7 +74,7 @@ private:
    unsigned int face_overs_;
 
 public:
-   Cutting() : recorded_path_(0), edges_to_split_(), face_overs_(0) {}
+   Cutting() : recorded_path_(0), v_edges_to_select_(), edges_to_split_(), face_overs_(0) {}
    ~Cutting(){}
 
    // Draw closest approximation of drawn curve on mesh
@@ -66,6 +83,10 @@ public:
    // Split marked edges and select new applied path
    template<typename MeshT>
    void splitAndSelect(MeshT& mesh);
+
+   // Clamp path to closest edges and select resulting path
+   template<typename MeshT>
+   void clampAndSelect(MeshT& mesh);
 
    // Find if two segments intersect and set intersection_point if appropriate
    template<typename VecType>
@@ -135,6 +156,7 @@ public:
  * @param q1 The end of the segment
  * @param intersection_point A pointer to a Eigen::Vector3d object for the intersection point
  * @param prec The precision with which to define collinearity and parallelism
+ * @return INTERSECT_NO | INTERSECT_PARALLEL | INTERSECT_COLLINEAR | INTERSECT_OK
  */
 template<typename VecType>
 int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, VecType *intersection_point, double prec) {
@@ -154,10 +176,10 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
    // Denominator
    double denom = cross_prod.norm() * cross_prod.norm();
 
-   emit log(LOGOUT, "denom: " + QString::number(denom) + " ;nomS: " + QString::number(nomS) + " ;nomT: " + QString::number(nomT));
    if (denom < prec) {
       if (nomS < prec || nomT < prec) {
          // Lines are collinear
+         *intersection_point = isOnSegment(q0, p0, p1) ? q0 : q1;
          return INTERSECT_COLLINEAR;
       }
       // Lines are parallel
@@ -214,8 +236,6 @@ bool Cutting::isOnSegment(VecType p, VecType s0, VecType s1, double prec) {
  */
 template<typename MeshT>
 void Cutting::splitAndSelect(MeshT &mesh) {
-   // Vertices of new edges to select
-   std::queue<int> v_edges_to_select;
 
    // Maps edges to their newly created neighbors after split
    std::map<int,std::set<int> > edges_split;
@@ -224,6 +244,14 @@ void Cutting::splitAndSelect(MeshT &mesh) {
    while (!edges_to_split_.empty()) {
       int edge = edges_to_split_.front().first;
       ACG::Vec3d point = edges_to_split_.front().second;
+
+      // Manage case where no split is needed
+      if (edge == -1) {
+         int v_idx = closest_connected_vertex(v_edges_to_select_.back(), point, mesh);
+         v_edges_to_select_.push(v_idx);
+         edges_to_split_.pop();
+         continue;
+      }
 
       // Create vector for edge map
       if (edges_split.find(edge) == edges_split.end()) {
@@ -253,11 +281,12 @@ void Cutting::splitAndSelect(MeshT &mesh) {
       typename MeshT::VertexHandle vh = mesh.add_vertex(point);
       mesh.split(mesh.edge_handle(edge_to_split), vh);
       --face_overs_;
-      v_edges_to_select.push(vh.idx());
+      v_edges_to_select_.push(vh.idx());
 
       // Store index of newly created edge
       /// Assumptions: a new edge has the latest index; TriMesh split performs between 1 and 3
       /// new_edge inserts (depending on boundary conditions), of which our new edge is the first.
+      /// PolyMesh doesn't insert new edges on split, other than the one on the edge split.
       int new_edge_idx = mesh.n_edges() - 1;
       if (mesh.is_trimesh()) {
          typename MeshT::HalfedgeHandle heh0 = mesh.halfedge_handle(mesh.edge_handle(edge), 0);
@@ -272,9 +301,78 @@ void Cutting::splitAndSelect(MeshT &mesh) {
    edges_split.clear();
 
    // Select
+   selectMarkedEdges(mesh);
+}
+
+/** \brief Clamp curve to closest edges and select resulting path
+ *
+ */
+template<typename MeshT>
+void Cutting::clampAndSelect(MeshT& mesh) {
+   if (recorded_path_.size() < 2) return;
+
+   // First find beginning of path
+   PathPoint prev_point = recorded_path_.front();
+   recorded_path_.pop_front();
+   int prev_path_vertex = std::get<TUPLE_VERTEX>(prev_point);
+   v_edges_to_select_.push(prev_path_vertex);
+
+   PathPoint curr_point;
+   while (!recorded_path_.empty()) {
+      // Advance until there is a change of vertex
+      curr_point = recorded_path_.front();
+      while (!recorded_path_.empty() && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) {
+         prev_point = curr_point;
+         recorded_path_.pop_front();
+         curr_point = recorded_path_.front();
+      }
+
+      // Get the two points and their closest edge
+      ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
+      int prev_edge = std::get<TUPLE_EDGE>(prev_point);
+      ACG::Vec3d curr_hit_point = std::get<TUPLE_POINT>(curr_point);
+      int curr_edge = std::get<TUPLE_EDGE>(curr_point);
+
+      int curr_path_vertex = std::get<TUPLE_VERTEX>(curr_point);
+      if (prev_edge == curr_edge) {
+         v_edges_to_select_.push(curr_path_vertex);
+      } else {
+         // Project path to triangle plane
+         typename MeshT::FaceHandle prev_face = mesh.face_handle(std::get<TUPLE_FACE>(prev_point));
+         Eigen::Vector3d p0(prev_hit_point[0], prev_hit_point[1], prev_hit_point[2]);
+         Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
+         Eigen::Vector3d p1 = projectToFacePlane(curr_p, std::get<TUPLE_FACE>(prev_point), mesh);
+
+         // Get outward face crossing point
+         int crossed_edge_idx = -1;
+         Eigen::Vector3d face_crossing = findOutgoingFaceCrossing(p0, p1, prev_face.idx(), crossed_edge_idx, mesh);
+
+         // Get next vertex on path
+         prev_path_vertex = closestVertexOnFace(face_crossing, prev_face.idx(), mesh);
+         if (prev_path_vertex != v_edges_to_select_.front())
+            v_edges_to_select_.push(prev_path_vertex);
+
+         // Project path to next face
+         /// TODO
+      }
+   }
+
+   // Select
+   selectMarkedEdges(mesh);
+}
+
+/** \brief Select edges that have been marked
+ * Go through the list v_edges_to_select_, connect and select found edges
+ *
+ * @param mesh The mesh
+ */
+template<typename MeshT>
+void Cutting::selectMarkedEdges(MeshT& mesh) {
+   if (v_edges_to_select_.size()<2) return;
+
    int prev_vertex_at_split = -1;
-   while (!v_edges_to_select.empty()) {
-      int curr_vertex_at_split = v_edges_to_select.front();
+   while (!v_edges_to_select_.empty()) {
+      int curr_vertex_at_split = v_edges_to_select_.front();
       if (prev_vertex_at_split != -1) {
          if (mesh.is_trimesh()) {
             //Find connecting edge and select
@@ -294,7 +392,7 @@ void Cutting::splitAndSelect(MeshT &mesh) {
       }
       prev_vertex_at_split = curr_vertex_at_split;
 
-      v_edges_to_select.pop();
+      v_edges_to_select_.pop();
    }
 }
 
@@ -404,6 +502,32 @@ int Cutting::edge_between(typename MeshT::VertexHandle vh_from,
    return -1;
 }
 
+/** \brief Get index of vertex connected to a known vertex
+ *
+ * @param vh_from A handle to a known vertex
+ * @param p_to The point for which to find the closest vertex index
+ * @param mesh The mesh
+ * @return The index of the closest vertex around the known vertex to the given point
+ */
+template<typename Vec3Type, typename MeshT>
+int Cutting::closest_connected_vertex(int vidx_from, Vec3Type p_to, MeshT& mesh) {
+   int v_idx = vidx_from;
+   typename MeshT::Point point_to(p_to[0], p_to[1], p_to[2]);
+   float min_dist = (mesh.point(mesh.vertex_handle(vidx_from)) - point_to).norm();
+
+   typename MeshT::VertexOHalfedgeIter voh_it = mesh.voh_iter(mesh.vertex_handle(vidx_from));
+   for (; voh_it.is_valid(); ++voh_it) {
+      typename MeshT::Point v_point = mesh.point(mesh.to_vertex_handle(*voh_it));
+      float dist = (v_point - point_to).norm();
+      if (dist < min_dist) {
+         min_dist = dist;
+         v_idx = (mesh.to_vertex_handle(*voh_it)).idx();
+      }
+   }
+
+   return v_idx;
+}
+
 /** \brief Joins adjacent cuts
  *
  * If two adjacent cuts are detected, the edge will be split and the properties and pointers
@@ -449,9 +573,9 @@ void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
                  "connectCuts: expected either TriMesh or PolyMesh");
 
    /// The new vertex will carry the left side edges
-   const size_t _max_cuts = 2;
+   const size_t max_cuts = 2;
    // Halfedges at cuts
-   typename MeshT::HalfedgeHandle heh_cuts[2*_max_cuts];
+   typename MeshT::HalfedgeHandle heh_cuts[2*max_cuts];
    // Halfedges on the left side of the cut
    std::vector<typename MeshT::HalfedgeHandle> left_halfedges;
    bool left_side = true;
@@ -460,7 +584,7 @@ void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
    // Count cuts and store halfedges according to side
    for (typename MeshT::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh); vih_it.is_valid(); ++vih_it) {
       typename MeshT::HalfedgeHandle heh = *vih_it;
-      if (mesh.is_boundary(heh) && cut < _max_cuts) {
+      if (mesh.is_boundary(heh) && cut < max_cuts) {
          heh_cuts[2*cut] = heh;
          heh_cuts[2*cut+1] = mesh.next_halfedge_handle(heh);
          ++cut;
@@ -471,9 +595,9 @@ void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
    }
 
    // Number of cuts must not exceed _max_cuts
-   if (cut > _max_cuts) {
-      emit log(LOGERR, "Topology error, a vertex is connected to " + QString::number(cut) + " cuts");
-   } else if (cut == _max_cuts) {
+   if (cut > max_cuts) {
+      std::cerr << "Vertex is connected to more than " << max_cuts << " cuts." << std::endl;
+   } else if (cut == max_cuts) {
       // Split vertex
       typename MeshT::VertexHandle new_vh = mesh.add_vertex(mesh.point(vh));
       mesh.copy_all_properties(vh, new_vh, true);
@@ -499,7 +623,110 @@ void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
    }
 }
 
+/** \brief Find closest vertex to hit point on a face
+ *
+ * @param _hit_point The point on the face
+ * @param _face_idx The index of the face
+ * @param mesh The mesh
+ * @return The index of the closest vertex
+ */
+template<typename Vec3Type, typename MeshT>
+int Cutting::closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh) {
+   typename MeshT::Point hit_point(_hit_point[0], _hit_point[1], _hit_point[2]);
+   typename MeshT::FaceHandle faceh = mesh.face_handle(_face_idx);
+
+   // Get all vertices
+   typename std::vector<typename MeshT::VertexHandle> vertexHandles;
+   typename MeshT::FaceVertexIter fv_it(mesh, faceh);
+   for (; fv_it.is_valid(); ++fv_it) {
+      vertexHandles.push_back(*fv_it);
+   }
+
+   // Find closest Vertex
+   typename std::vector<typename MeshT::VertexHandle>::iterator v_it(vertexHandles.begin());
+   typename MeshT::VertexHandle vertex(*v_it++);
+   double min_v_dist = (mesh.point(vertex) - hit_point).norm();
+   for (; v_it != vertexHandles.end(); ++v_it) {
+      double v_dist = (mesh.point(*v_it) - hit_point).norm();
+      if (v_dist < min_v_dist) {
+         min_v_dist = v_dist;
+         vertex = *v_it;
+      }
+   }
+
+   return vertex.idx();
+}
+
+/** \brief Find point of crossing a face outward
+ *
+ * If _point_inside is inside the face without being too close to and edge, the
+ * return value will be the point of intersection of the line defined by
+ * (_point_inside, _point_outside) and an edge of the face. In this case
+ * crossed_edge_idx will be set to the index of the edge crossed.
+ * On the other hand if _point_inside lies too close to an edge, the line will
+ * be detected as collinear with that edge and the return value will be set to
+ * the position of the vertex inside the range [_point_inside, _point_outside].
+ * In that case crossed_edge_idx will be set to -1.
+ *
+ * @param _point_inside The point inside the face
+ * @param _point_outside The point outside the face
+ * @param _face_idx The index of the face
+ * @param crossed_edge_idx [out] The index of the crossed edge if an intersection
+ *    was found successfully, or -1 if the lines were collinear
+ * @param mesh The mesh
+ * @return The intersection point
+ */
+template<typename Vec3Type, typename MeshT>
+Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const Vec3Type _point_outside,
+                                          int _face_idx, int& crossed_edge_idx, MeshT& mesh) {
+   // Find crossed edge and point
+   Vec3Type intersection_point;
+   typename MeshT::FaceHalfedgeIter fh_it = mesh.fh_iter(mesh.face_handle(_face_idx));
+   for (; fh_it; ++fh_it) {
+      typename MeshT::Point point_from = mesh.point(mesh.from_vertex_handle(*fh_it));
+      Vec3Type q0(point_from[0], point_from[1], point_from[2]);
+      typename MeshT::Point point_to = mesh.point(mesh.to_vertex_handle(*fh_it));
+      Vec3Type q1(point_to[0], point_to[1], point_to[2]);
+
+      // Get intersection point
+      int intersection_result = segmentIntersect(_point_inside, _point_outside, q0, q1, &intersection_point);
+      if (intersection_result == INTERSECT_OK) {
+         crossed_edge_idx = mesh.edge_handle(*fh_it).idx();
+         break;
+      } else if (intersection_result == INTERSECT_COLLINEAR) {
+         crossed_edge_idx = -1;
+         break;
+      }
+   }
+
+   return intersection_point;
+}
+
+/** \brief Given a triangle and a point, project point to plane defined by triangle
+ *
+ * @param _point_to_project The point to project on the plane
+ * @param _face_idx The index of the face that defines the plane
+ * @param _mesh The mesh
+ * @return The projected point
+ */
+template<typename Vec3Type, typename MeshT>
+Vec3Type Cutting::projectToFacePlane(Vec3Type _point_to_project, int _face_idx, MeshT _mesh) {
+   typename MeshT::FaceHandle fh = _mesh.face_handle(_face_idx);
+   typename MeshT::Normal face_normal = _mesh.calc_face_normal(fh);
+   Eigen::Vector3d n(face_normal[0], face_normal[1], face_normal[2]);
+
+   Eigen::Vector3d p(_point_to_project[0], _point_to_project[1], _point_to_project[2]);
+   typename MeshT::Point face_centroid = _mesh.calc_face_centroid(fh);
+   Eigen::Vector3d face_p(face_centroid[0], face_centroid[1], face_centroid[2]);
+
+   Eigen::Hyperplane<double,3> plane(n, face_p);
+   Eigen::Vector3d projection = plane.projection(p);
+
+   return Vec3Type(projection[0], projection[1], projection[2]);
+}
+
+
+
 
 
 #endif // CUTTING
-

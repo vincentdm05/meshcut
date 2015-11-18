@@ -9,22 +9,28 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
-   directCutCheckBox_(0), selectionButtonToggled_(0),
-   cutting_tools_(0),
+   clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
+   cutting_tools_(),
    active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
-   visible_path_(), latest_object_(0) {}
+   visible_path_(), latest_object_(0),
+   shape_tools_(), object_updated_(false) {}
 
 /** \brief Initialize plugin
  *
  */
 void MeshCut::initializePlugin()
 {
-   // Create cutting tools
+   toolBox_ = new QWidget();
+   QVBoxLayout* mainToolboxLayout = new QVBoxLayout(toolBox_);
+
+
+   /// Cutting tools
    cutting_tools_ = new Cutting();
 
-   // Cutting toolbox
-   toolBox_ = new QWidget();
-   QVBoxLayout* layout = new QVBoxLayout(toolBox_);
+   QFont titleLabelFont("Arial", 15, QFont::Bold);
+   QLabel* cuttingLabel = new QLabel("Cutting tools");
+   cuttingLabel->setFont(titleLabelFont);
+   mainToolboxLayout->addWidget(cuttingLabel);
 
    QHBoxLayout* toggleLayout = new QHBoxLayout(toolBox_);
    toggleLayout->setSpacing(5);
@@ -32,26 +38,52 @@ void MeshCut::initializePlugin()
    selectButton_ = new QPushButton("&Select Edges", toolBox_);
    selectButton_->setToolTip("Select edges to be cut");
    selectButton_->setCheckable(true);
+   toggleLayout->addWidget(selectButton_);
 
-   drawButton_ = new QPushButton("&Draw Cut", toolBox_);
+   drawButton_ = new QPushButton("&Draw Curve", toolBox_);
    drawButton_->setToolTip("Draw a path to be cut");
    drawButton_->setCheckable(true);
-
-   toggleLayout->addWidget(selectButton_);
    toggleLayout->addWidget(drawButton_);
-   layout->addItem(toggleLayout);
 
+   mainToolboxLayout->addItem(toggleLayout);
+
+   clampToEdgeCheckBox_ = new QCheckBox("Clamp drawn curve to mesh edges");
+   mainToolboxLayout->addWidget(clampToEdgeCheckBox_);
+
+   /// TODO: make this possible first
    directCutCheckBox_ = new QCheckBox("Cut directly as the mouse clicks");
-   layout->addWidget(directCutCheckBox_);
+//   mainToolboxLayout->addWidget(directCutCheckBox_);
 
-   QPushButton* cutButton = new QPushButton("&Cut", toolBox_);
+   QPushButton* cutButton = new QPushButton("&Cut selected", toolBox_);
    cutButton->setToolTip("Cut selected edges.");
+   mainToolboxLayout->addWidget(cutButton);
 
-   layout->addWidget(cutButton);
+   // Add a line separator between tools
+   mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QFrame* lineSeparator = new QFrame();
+   lineSeparator->setFrameShape(QFrame::HLine);
+   lineSeparator->setFrameShadow(QFrame::Sunken);
+   mainToolboxLayout->addWidget(lineSeparator);
 
+   /// Shape tools
+   shape_tools_ = new ShapeTools();
+
+   QLabel* shapeLabel = new QLabel("Shape tools");
+   shapeLabel->setFont(titleLabelFont);
+   mainToolboxLayout->addWidget(shapeLabel);
+
+   QPushButton* toggleFixSelectedButton = new QPushButton("Fix/unfix selected vertices", toolBox_);
+   toggleFixSelectedButton->setToolTip("Toggle constraint to fix selected vertices to their current position");
+   mainToolboxLayout->addWidget(toggleFixSelectedButton);
+
+   // Spacer at the end
+   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
+
+   /// Connect signals->slots
    connect(selectButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
+   connect(toggleFixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
    emit addToolbox(tr("MeshCut"), toolBox_, toolboxIcon);
@@ -148,6 +180,24 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
       selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
       mouseDraw(_event);
+   } else if (PluginFunctions::pickMode() == "MoveSelection" && object_updated_ &&
+              PluginFunctions::actionMode() == Viewer::PickingMode) {
+      if (shape_tools_->updateSolveMesh()) {
+         object_updated_ = false;
+         emit updatedObject(shape_tools_->getObjId(), UPDATE_GEOMETRY);
+         emit updateView();
+      }
+   }
+}
+
+/**
+ * @brief MeshCut::slotObjectUpdated
+ * @param _id The id of the updated object
+ * @param _type
+ */
+void MeshCut::slotObjectUpdated(int _id, const UpdateType& _type) {
+   if (_id == shape_tools_->getObjId() && _type == UPDATE_GEOMETRY) {
+      object_updated_ = true;
    }
 }
 
@@ -400,11 +450,12 @@ void MeshCut::mouseDraw(QMouseEvent* _event) {
          if (cutting_tools_->pathSize() > 1) {
             showPath(std::get<TUPLE_POINT>(cutting_tools_->getPathPoint(PATH_BACK)), active_hit_point_, object);
          }
-         cutting_tools_->addPathPoint(std::make_tuple(active_hit_point_, active_face_, active_edge_));
+         cutting_tools_->addPathPoint(std::make_tuple(active_hit_point_, active_face_, active_edge_, active_vertex_));
 
          // If real time cutting is selected, apply after two face-overs
          if (directCutCheckBox_->isChecked() && cutting_tools_->faceOvers() > 2) {
-
+            /// TODO: real time cutting is hardcore
+            emit log(LOGWARN, "Real-time cutting is still under development.");
          }
       }
       // The mouse got out of the mesh
@@ -454,13 +505,23 @@ void MeshCut::applyCurve(BaseObjectData *object) {
    if (!object || cutting_tools_->pathEmpty()) return;
 
    // Apply to mesh
-   cutting_tools_->markForSplit(object);
-   if (object->dataType(DATA_TRIANGLE_MESH)) {
-      TriMesh& mesh = *PluginFunctions::triMesh(object);
-      cutting_tools_->splitAndSelect(mesh);
-   } else if (object->dataType(DATA_POLY_MESH)) {
-      PolyMesh& mesh = *PluginFunctions::polyMesh(object);
-      cutting_tools_->splitAndSelect(mesh);
+   if (clampToEdgeCheckBox_->isChecked()) {
+      if (object->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(object);
+         cutting_tools_->clampAndSelect(mesh);
+      } else if (object->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+         cutting_tools_->clampAndSelect(mesh);
+      }
+   } else {
+      cutting_tools_->markForSplit(object);
+      if (object->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(object);
+         cutting_tools_->splitAndSelect(mesh);
+      } else if (object->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+         cutting_tools_->splitAndSelect(mesh);
+      }
    }
 
    // Remove drawn curve
@@ -486,7 +547,7 @@ void MeshCut::applyCurve(BaseObjectData *object) {
  */
 void MeshCut::slotCutSelectedEdges() {
    // Iterate over all objects
-   PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::ALL_OBJECTS);
    for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
@@ -526,7 +587,33 @@ void MeshCut::slotCutSelectedEdges() {
    }
 }
 
+/** \brief Toggle closenessConstraint on selected vertices
+ *
+ */
+void MeshCut::slotFixSelectedVertices() {
+   std::set<int> v_idxs;
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      v_idxs.clear();
 
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+         shape_tools_->setMesh(&mesh, o_it->id());
+
+         TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               v_idxs.insert((*v_it).idx());
+            }
+         }
+
+         shape_tools_->toggleFixVertices(v_idxs);
+      }
+
+      /// At the moment, only one object is supported
+      break;
+   }
+}
 
 
 
