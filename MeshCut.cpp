@@ -10,7 +10,7 @@ Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 MeshCut::MeshCut() :
    toolBar_(0), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
    clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
-   cutting_tools_(),
+   strainWeightSpinBox_(), cutting_tools_(),
    active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
    visible_path_(), latest_object_(0),
    shape_tools_(), object_updated_(false) {}
@@ -72,9 +72,34 @@ void MeshCut::initializePlugin()
    shapeLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(shapeLabel);
 
+   // Fixed vertices toggle
    QPushButton* toggleFixSelectedButton = new QPushButton("Fix/unfix selected vertices", toolBox_);
    toggleFixSelectedButton->setToolTip("Toggle constraint to fix selected vertices to their current position");
    mainToolboxLayout->addWidget(toggleFixSelectedButton);
+
+   // Strain weight
+   QHBoxLayout* strainWeightLayout = new QHBoxLayout(toolBox_);
+   strainWeightLayout->setSpacing(5);
+
+   QLabel* strainWeightLabel = new QLabel(toolBox_);
+   strainWeightLabel->setText(QObject::tr("Edge strain weight"));
+   strainWeightLabel->setAlignment(Qt::AlignLeft);
+   strainWeightLayout->addWidget(strainWeightLabel);
+
+   strainWeightSpinBox_ = new QSpinBox(toolBox_);
+   strainWeightSpinBox_->setMinimum(0);
+   strainWeightSpinBox_->setMaximum(50);
+   strainWeightSpinBox_->setSingleStep(1);
+   strainWeightSpinBox_->setValue(10);
+   strainWeightLayout->addWidget(strainWeightSpinBox_);
+
+   mainToolboxLayout->addItem(strainWeightLayout);
+
+   // Play/pause button
+   QPushButton* playPauseShapeToolButton = new QPushButton("Play/Pause shape solving", toolBox_);
+   playPauseShapeToolButton->setToolTip("Play and pause shape solving actions");
+   playPauseShapeToolButton->setCheckable(true);
+   mainToolboxLayout->addWidget(playPauseShapeToolButton);
 
    // Spacer at the end
    mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
@@ -84,6 +109,7 @@ void MeshCut::initializePlugin()
    connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
    connect(toggleFixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
+   connect(playPauseShapeToolButton, SIGNAL(clicked()), this, SLOT(slotPlayPauseShapeTools()));
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
    emit addToolbox(tr("MeshCut"), toolBox_, toolboxIcon);
@@ -180,13 +206,9 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
       selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
       mouseDraw(_event);
-   } else if (PluginFunctions::pickMode() == "MoveSelection" && object_updated_ &&
+   } else if (shape_tools_->isRunning() && PluginFunctions::pickMode() == "MoveSelection" &&
               PluginFunctions::actionMode() == Viewer::PickingMode) {
-      if (shape_tools_->updateSolveMesh()) {
-         object_updated_ = false;
-         emit updatedObject(shape_tools_->getObjId(), UPDATE_GEOMETRY);
-         emit updateView();
-      }
+      moveMesh(_event);
    }
 }
 
@@ -197,7 +219,9 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
  */
 void MeshCut::slotObjectUpdated(int _id, const UpdateType& _type) {
    if (_id == shape_tools_->getObjId() && _type == UPDATE_GEOMETRY) {
+      emit log(LOGOUT, "object updated");
       object_updated_ = true;
+//      shape_tools_->updateMesh();
    }
 }
 
@@ -477,6 +501,37 @@ void MeshCut::mouseDraw(QMouseEvent* _event) {
    }
 }
 
+/** \brief Solve and update positions of vertices on mesh
+ *
+ * @param _event
+ */
+void MeshCut::moveMesh(QMouseEvent *_event) {
+   emit log(LOGOUT, "move mesh");
+   if (_event->type() == QEvent::MouseButtonPress) {
+      TriMesh* mesh;
+      PluginFunctions::getMesh(shape_tools_->getObjId(), mesh);
+
+      // Find handle index
+      std::vector<int> handle_idxs;
+      TriMesh::VertexIter v_it(mesh->vertices_begin());
+      for (; v_it!=mesh->vertices_end(); ++v_it) {
+         if (mesh->status(*v_it).selected()) {
+            handle_idxs.push_back((*v_it).idx());
+         }
+      }
+
+      shape_tools_->setHandles(handle_idxs);
+      shape_tools_->setEdgeStrain(strainWeightSpinBox_->value()/ 10.0);
+   } else if (object_updated_ && _event->type() == QEvent::MouseMove) {
+      shape_tools_->solveUpdateMesh();
+      emit updatedObject(shape_tools_->getObjId(), UPDATE_GEOMETRY);
+      emit updateView();
+      object_updated_ = false;
+   } else if (_event->type() == QEvent::MouseButtonRelease) {
+      shape_tools_->setHandles(std::vector<int>());
+   }
+}
+
 /** \brief Show consecutive hit points as path
  * Make the current mouse path visible by creating lines between selected recorded hit points.
  */
@@ -613,6 +668,17 @@ void MeshCut::slotFixSelectedVertices() {
       /// At the moment, only one object is supported
       break;
    }
+
+   emit updatedObject(shape_tools_->getObjId(), UPDATE_SELECTION_VERTICES);
+   emit updatedObject(shape_tools_->getObjId(), UPDATE_COLOR);
+   emit updateView();
+}
+
+/** \brief Toggle play/pause in shape tools
+ *
+ */
+void MeshCut::slotPlayPauseShapeTools() {
+   shape_tools_->playPause();
 }
 
 

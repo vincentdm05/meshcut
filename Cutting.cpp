@@ -108,7 +108,8 @@ void Cutting::markForSplit(BaseObjectData* object) {
                   Eigen::Vector3d intersect_on_facing_edge;
                   int intersect_status = segmentIntersect(intersection_point, proj_end, q0, q1, &intersect_on_facing_edge);
                   if ((intersect_status == INTERSECT_OK || intersect_status == INTERSECT_COLLINEAR) &&
-                      !(intersect_on_facing_edge - intersection_point).isZero(1e-5)) {
+                      !(intersect_on_facing_edge - intersection_point).isZero(1e-5) &&
+                      !((intersection_point - q0).isZero(1e-5) || (intersection_point - q1).isZero(1e-5))) {
                      next_face_idx = (*vfit).idx();
                      break;
                   }
@@ -148,7 +149,8 @@ void Cutting::markForSplit(BaseObjectData* object) {
 
                // As soon as an edge is crossed, stop: we only need one
                if (segmentIntersect(p0, p1, q0, q1, &point_in_face) == INTERSECT_OK &&
-                   !(point_in_face - p0).isZero(1e-5)) break;
+                   !(point_in_face - p0).isZero(1e-5) &&
+                   !((intersection_point - q0).isZero(1e-5) || (intersection_point - q1).isZero(1e-5))) break;
             }
 
             // Add new point to recorded path with next face

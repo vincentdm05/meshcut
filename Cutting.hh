@@ -55,7 +55,7 @@ private:
    // Find point of crossing a face outward
    template<typename Vec3Type, typename MeshT>
    Vec3Type findOutgoingFaceCrossing(const Vec3Type _point_inside, const Vec3Type _point_outside,
-                                    int _face_idx, int& crossed_edge_idx, MeshT& mesh);
+                                    int _face_idx, int& crossed_edge_idx, MeshT& mesh, float prec = 1e-10);
 
    // Given a triangle and a point, project point to plane defined by triangle
    template<typename Vec3Type, typename MeshT>
@@ -169,15 +169,14 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
    VecType diff = q0 - p0;
    VecType cross_prod = vp.cross(vq);
 
-   // Numerators
-   double nomT = (diff.cross(vq)).dot(cross_prod);
-   double nomS = (diff.cross(vp)).dot(cross_prod);
+   VecType diffCrossVq = diff.cross(vq);
+   VecType diffCrossVp = diff.cross(vp);
 
    // Denominator
    double denom = cross_prod.norm() * cross_prod.norm();
 
    if (denom < prec) {
-      if (nomS < prec || nomT < prec) {
+      if (diffCrossVp.norm() < prec || diffCrossVq.norm() < prec) {
          // Lines are collinear
          *intersection_point = isOnSegment(q0, p0, p1) ? q0 : q1;
          return INTERSECT_COLLINEAR;
@@ -186,8 +185,9 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
       return INTERSECT_PARALLEL;
    }
 
-   double t = nomT / denom;
-   double s = nomS / denom;
+   // Also possible is det(aT; bT; cT) = (a x b) . c
+   double t = diffCrossVq.dot(cross_prod) / denom;
+   double s = diffCrossVp.dot(cross_prod) / denom;
 
    if (t >= 0 && s >= 0 && s <= 1) {
       *intersection_point = q0 + s * vq;
@@ -319,7 +319,7 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       PathPoint prev_point = recorded_path_.front();
       recorded_path_.pop_front();
       PathPoint curr_point = recorded_path_.front();
-      while (!recorded_path_.empty() && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) {
+      while (recorded_path_.size() > 1 && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) {
          prev_point = curr_point;
          recorded_path_.pop_front();
          curr_point = recorded_path_.front();
@@ -340,7 +340,7 @@ void Cutting::clampAndSelect(MeshT& mesh) {
          typename MeshT::FaceHandle prev_face = mesh.face_handle(std::get<TUPLE_FACE>(prev_point));
          Eigen::Vector3d p0(prev_hit_point[0], prev_hit_point[1], prev_hit_point[2]);
          Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
-         Eigen::Vector3d p1 = projectToFacePlane(curr_p, std::get<TUPLE_FACE>(prev_point), mesh);
+         Eigen::Vector3d p1 = projectToFacePlane(curr_p, prev_face.idx(), mesh);
 
          // Get outward face crossing point
          int crossed_edge_idx = -1;
@@ -677,7 +677,7 @@ int Cutting::closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh
  */
 template<typename Vec3Type, typename MeshT>
 Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const Vec3Type _point_outside,
-                                          int _face_idx, int& crossed_edge_idx, MeshT& mesh) {
+                                          int _face_idx, int& crossed_edge_idx, MeshT& mesh, float prec) {
    // Find crossed edge and point
    Vec3Type intersection_point;
    typename MeshT::FaceHalfedgeIter fh_it = mesh.fh_iter(mesh.face_handle(_face_idx));
@@ -689,6 +689,11 @@ Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const V
 
       // Get intersection point
       int intersection_result = segmentIntersect(_point_inside, _point_outside, q0, q1, &intersection_point);
+
+      // Avoid same point
+      if ((_point_inside - intersection_point).isZero(prec) &&
+          ((_point_inside - q0).isZero(prec) || (_point_inside - q1).isZero(prec))) continue;
+
       if (intersection_result == INTERSECT_OK) {
          crossed_edge_idx = mesh.edge_handle(*fh_it).idx();
          break;

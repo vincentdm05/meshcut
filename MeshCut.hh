@@ -71,6 +71,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       /// Shape tools slots
       void slotFixSelectedVertices();
+      void slotPlayPauseShapeTools();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -84,6 +85,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void selectEdge(QMouseEvent* _event);
       // Draw line to be cut
       void mouseDraw(QMouseEvent* _event);
+      // Solve and update positions of vertices on mesh
+      void moveMesh(QMouseEvent* _event);
       // Show drawn path
       void showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjectData *object);
       // Finalize mouse interaction
@@ -98,6 +101,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QCheckBox* clampToEdgeCheckBox_;
       QCheckBox* directCutCheckBox_;
       size_t selectionButtonToggled_;
+      QSpinBox* strainWeightSpinBox_;
 
       Cutting* cutting_tools_;
 
