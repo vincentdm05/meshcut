@@ -20,9 +20,10 @@ void Cutting::markForSplit(BaseObjectData* object) {
          recorded_path_.pop_front();
          curr_point = recorded_path_.front();
       }
-      if (recorded_path_.empty() && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) break;
+      if (recorded_path_.size() < 2 && std::get<TUPLE_FACE>(curr_point) == std::get<TUPLE_FACE>(prev_point)) break;
 
       /// TODO: Find and correct bug so that we don't need that
+      /// It is a terrible hack and we should not rely on this
       infinite_loop_breaker[0] = infinite_loop_breaker[1];
       infinite_loop_breaker[1] = infinite_loop_breaker[2];
       infinite_loop_breaker[2] = std::make_pair(std::get<TUPLE_FACE>(prev_point), std::get<TUPLE_FACE>(curr_point));
@@ -34,6 +35,7 @@ void Cutting::markForSplit(BaseObjectData* object) {
          recorded_path_.pop_front();
          continue;
       }
+      /// End of hack ///
 
       // Get the two points and their closest edge
       ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
