@@ -1,13 +1,9 @@
 #include "ShapeTools.hh"
 
-ShapeTools::ShapeTools () : is_running_(false), object_id_(-1), triMesh_(0),
-   fixedConstraintWeight_(1000.0), fixedVerticesIdx_(), fixedConstraintIds_(),
-   handleConstraintWeight_(100000000.0), handleIdxs_(), handleConstraintIds_(),
-   edgeStrainWeight_(0.0), edgeStrainConstraintIds_() {
-   solver_ = new ShapeOp::Solver();
-   solver_iterations_ = 50;
-}
-
+/**
+ * @brief ShapeTools::setConstraints Sets all constraints, provided that indices of the relevant
+ * elements are set appropriately.
+ */
 void ShapeTools::setConstraints() {
    // Closeness constraints for fixed vertices
    fixedConstraintIds_.clear();
@@ -33,27 +29,43 @@ void ShapeTools::setConstraints() {
    }
 
    // Edge strain
-   edgeStrainConstraintIds_.clear();
-   TriMesh::EdgeIter e_it(triMesh_->edges_begin());
-   for (; e_it!=triMesh_->edges_end(); ++e_it) {
-      std::vector<int> edge_v_idxs;
-      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 0))).idx());
-      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 1))).idx());
+//   edgeStrainConstraintIds_.clear();
+//   TriMesh::EdgeIter e_it(triMesh_->edges_begin());
+//   std::vector<int> edge_v_idxs;
+//   for (; e_it!=triMesh_->edges_end(); ++e_it) {
+//      edge_v_idxs.clear();
 
-      auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(edge_v_idxs, edgeStrainWeight_, solver_->getPoints());
-      edgeStrainConstraintIds_.push_back(solver_->addConstraint(c));
+//      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 0))).idx());
+//      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 1))).idx());
+
+//      auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(edge_v_idxs, edgeStrainWeight_, solver_->getPoints());
+//      edgeStrainConstraintIds_.push_back(solver_->addConstraint(c));
+//   }
+
+   // Triangle area constraint
+   std::vector<int> v_ids;
+   for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
+   {
+       v_ids.clear();
+       for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+           v_ids.push_back((*fv_it).idx());
+
+       auto c = std::make_shared<ShapeOp::TriangleStrainConstraint>(v_ids, edgeStrainWeight_, solver_->getPoints());
+       solver_->addConstraint(c);
    }
 }
 
 /**
- * @brief ShapeTools::setMesh
- * @param _mesh
- * @param _object_id
+ * @brief ShapeTools::setMesh Saves a pointer to the mesh and sets the positions of vertices in the solver
+ * @param _mesh The mesh pointer
+ * @param _object_id The id of the object as set by openflipper, for later reference
  */
 void ShapeTools::setMesh(TriMesh *_mesh, int _object_id) {
-   if (!_mesh || _object_id < 0) return;
    object_id_ = _object_id;
    triMesh_ = _mesh;
+
+   if (solver_) delete solver_;
+   solver_ = new ShapeOp::Solver();
 
    // Set vertices positions in solver
    ShapeOp::Matrix3X p(3, triMesh_->n_vertices());
@@ -72,35 +84,6 @@ void ShapeTools::setMesh(TriMesh *_mesh, int _object_id) {
 }
 
 /**
- * @brief ShapeTools::fixVertices
- * @param v_idxs Indices of vertices to fix
- */
-void ShapeTools::toggleFixVertices(std::set<int> v_idxs) {
-   if (v_idxs.empty()) {
-      fixedConstraintIds_.clear();
-      return;
-   }
-
-   // Toggle indices of fixed vertices
-   std::set<int>::iterator v_idxs_it(v_idxs.begin());
-   for (; v_idxs_it!=v_idxs.end(); ++v_idxs_it) {
-      int idx = *v_idxs_it;
-      std::set<int>::iterator found_it = fixedVerticesIdx_.find(idx);
-
-      if (found_it == fixedVerticesIdx_.end()) {
-         fixedVerticesIdx_.insert(idx);
-         triMesh_->status(triMesh_->vertex_handle(idx)).set_selected(false);
-         /// TODO: find a way to color that
-         triMesh_->set_color(triMesh_->vertex_handle(idx), OpenMesh::Vec4f(0.4f,0.2f,0.6f,1.0f));
-      } else {
-         fixedVerticesIdx_.erase(idx);
-         triMesh_->status(triMesh_->vertex_handle(idx)).set_selected(false);
-         triMesh_->set_color(triMesh_->vertex_handle(idx), OpenMesh::Vec4f(0.5,0.5,0.5,1));
-      }
-   }
-}
-
-/**
  * @brief ShapeTools::moveHandle
  */
 void ShapeTools::moveHandles() {
@@ -109,7 +92,7 @@ void ShapeTools::moveHandles() {
    std::vector<int>::iterator idx_it(handleIdxs_.begin());
    for (; idx_it!=handleIdxs_.end(); ++idx_it) {
       TriMesh::Point handle_point = triMesh_->point(triMesh_->vertex_handle(*idx_it));
-      Eigen::Vector3d pos(handle_point[0], handle_point[1], handle_point[2]);
+      Eigen::Vector3f pos(handle_point[0], handle_point[1], handle_point[2]);
 
       auto c = std::dynamic_pointer_cast<ShapeOp::ClosenessConstraint>(solver_->getConstraint(handleConstraintIds_[*idx_it]));
       c->setPosition(pos.cast<ShapeOp::Scalar>());
@@ -119,16 +102,26 @@ void ShapeTools::moveHandles() {
 /**
  * @brief Update positions of vertices based on new positions obtained from solving system
  */
-void ShapeTools::solveUpdateMesh() {
-   if (!triMesh_) return;
+bool ShapeTools::solveUpdateMesh() {
+   if (!triMesh_) {
+      std::cerr << "A mesh should be set before using the solver" << std::endl;
+      return false;
+   }
 
-   // Update solver
-   setConstraints();
-   solver_->initialize();
+   // Topology or handles have changed
+   if (update_needed_) {
+//      solver_ = new ShapeOp::Solver();
+      setConstraints();
+      solver_->initialize();
+
+      update_needed_ = false;
+   }
+
+   // Update solver handle positions
    moveHandles();
 
    // Solve system
-   solver_->solve(solver_iterations_);
+   if (!solver_->solve(solver_iterations_)) return false;
 
    // Update vertex positions on mesh
    ShapeOp::Matrix3X p(3, triMesh_->n_vertices());
@@ -141,8 +134,9 @@ void ShapeTools::solveUpdateMesh() {
       triMesh_->set_point(*v_it, point);
    }
    triMesh_->update_normals();
-}
 
+   return true;
+}
 
 
 

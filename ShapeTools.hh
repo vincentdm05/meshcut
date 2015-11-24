@@ -11,7 +11,7 @@ class ShapeTools {
 private:
    ShapeOp::Solver* solver_;
    size_t solver_iterations_;
-   bool is_running_;
+   bool update_needed_;
 
    int object_id_;
    TriMesh* triMesh_;
@@ -34,26 +34,39 @@ private:
    void moveHandles();
 
 public:
-   ShapeTools();
-   ~ShapeTools() { delete solver_; }
+   ShapeTools() : update_needed_(true), object_id_(-1), triMesh_(0),
+      fixedConstraintWeight_(10.0), fixedVerticesIdx_(), fixedConstraintIds_(),
+      handleConstraintWeight_(10.0), handleIdxs_(), handleConstraintIds_(),
+      edgeStrainWeight_(50.0), edgeStrainConstraintIds_() {
+      solver_iterations_ = 50;
+   }
+   ~ShapeTools() { if (solver_) delete solver_; }
 
    void setMesh(TriMesh* _mesh, int _object_id);
    void setMesh(PolyMesh* _mesh, int _object_id) { /** TODO: support for polymesh */ }
 
-   void playPause() { is_running_ = !is_running_; if (is_running_) updateMesh(); }
-   bool isRunning() { return is_running_; }
+   void flagUpdateNeeded() { update_needed_ = true; }
+   bool updateNeeded() { return update_needed_; }
 
-   void updateMesh() { setMesh(triMesh_, object_id_); }
+   void fixVertices(std::set<int> v_idxs) { fixedVerticesIdx_ = v_idxs; }
 
-   void toggleFixVertices(std::set<int> v_idxs);
-   void setHandles(std::vector<int> _handleIdxs) { handleIdxs_ = _handleIdxs; }
+   /**
+    * @brief setHandles Saves the given handle indices and flags an update if it has changed
+    * @param _handleIdxs The handle indices
+    */
+   void setHandles(std::vector<int> _handleIdxs) {
+      if (_handleIdxs != handleIdxs_) {
+         handleIdxs_ = _handleIdxs;
+         flagUpdateNeeded();
+      }
+   }
 
-   void setEdgeStrain(int _strainWeight) { edgeStrainWeight_ = _strainWeight; }
+   void setEdgeStrain(double _strainWeight) { edgeStrainWeight_ = _strainWeight; }
 
    int getObjId() { return object_id_; }
 
    // Update mesh geometry based on new positions from solving system
-   void solveUpdateMesh();
+   bool solveUpdateMesh();
 
 };
 

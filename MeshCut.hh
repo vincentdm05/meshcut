@@ -71,7 +71,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       /// Shape tools slots
       void slotFixSelectedVertices();
-      void slotPlayPauseShapeTools();
+      void slotFlagUpdate();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -93,6 +93,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void applyCurve(BaseObjectData* object);
 
       QToolBar* toolBar_;
+      bool mouseDown_;
 
       QAction* edgeCutAction_;
       QWidget* toolBox_;
@@ -122,8 +123,14 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       bool object_updated_;
 
    public:
-      MeshCut();
-      ~MeshCut(){delete cutting_tools_; delete shape_tools_;}
+      MeshCut() :
+         toolBar_(0), mouseDown_(false), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
+         clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
+         strainWeightSpinBox_(), cutting_tools_(),
+         active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
+         visible_path_(), latest_object_(0),
+         shape_tools_(), object_updated_(false) {}
+      ~MeshCut(){ delete cutting_tools_; delete shape_tools_; }
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }
