@@ -64,7 +64,7 @@ void ShapeTools::setMesh(TriMesh *_mesh, int _object_id) {
    object_id_ = _object_id;
    triMesh_ = _mesh;
 
-   if (solver_) delete solver_;
+   if (solver_ != NULL) delete solver_;
    solver_ = new ShapeOp::Solver();
 
    // Set vertices positions in solver

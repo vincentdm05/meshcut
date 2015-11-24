@@ -40,7 +40,7 @@ public:
       edgeStrainWeight_(50.0), edgeStrainConstraintIds_() {
       solver_iterations_ = 50;
    }
-   ~ShapeTools() { if (solver_) delete solver_; }
+   ~ShapeTools() { if (solver_ != NULL) delete solver_; }
 
    void setMesh(TriMesh* _mesh, int _object_id);
    void setMesh(PolyMesh* _mesh, int _object_id) { /** TODO: support for polymesh */ }
