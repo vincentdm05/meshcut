@@ -19,25 +19,34 @@ private:
    // Fixed vertices
    double fixedConstraintWeight_;
    std::set<int> fixedVerticesIdx_;
-   std::vector<int> fixedConstraintIds_;
 
-   // Handle vertex
+   // Handle vertices
    double handleConstraintWeight_;
    std::vector<int> handleIdxs_;
    std::map<int,int> handleConstraintIds_;
 
    // Edge strain
    double edgeStrainWeight_;
-   std::vector<int> edgeStrainConstraintIds_;
+   bool edgeStrainActive_;
+
+   // Triangle strain
+   double triangleStrainWeight_;
+   bool triangleStrainActive_;
+
+   // Area strain
+   double areaStrainWeight_;
+   bool areaStrainActive_;
 
    void setConstraints();
    void moveHandles();
 
 public:
-   ShapeTools() : update_needed_(true), object_id_(-1), triMesh_(0),
-      fixedConstraintWeight_(10.0), fixedVerticesIdx_(), fixedConstraintIds_(),
-      handleConstraintWeight_(10.0), handleIdxs_(), handleConstraintIds_(),
-      edgeStrainWeight_(50.0), edgeStrainConstraintIds_() {
+   ShapeTools() : solver_(NULL), update_needed_(true), object_id_(-1), triMesh_(0),
+      fixedConstraintWeight_(5.0), fixedVerticesIdx_(),
+      handleConstraintWeight_(5.0), handleIdxs_(), handleConstraintIds_(),
+      edgeStrainWeight_(1.0), edgeStrainActive_(false),
+      triangleStrainWeight_(1.0), triangleStrainActive_(false),
+      areaStrainWeight_(1.0), areaStrainActive_(false) {
       solver_iterations_ = 50;
    }
    ~ShapeTools() { if (solver_ != NULL) delete solver_; }
@@ -62,6 +71,24 @@ public:
    }
 
    void setEdgeStrain(double _strainWeight) { edgeStrainWeight_ = _strainWeight; }
+
+   // Activation of constraints
+   enum ConstraintType { EDGE_STRAIN, TRIANGLE_STRAIN, AREA_STRAIN };
+   void toggleConstraint(int _constraintType, bool _active) {
+      switch (_constraintType) {
+      case EDGE_STRAIN:
+         edgeStrainActive_ = _active;
+         break;
+      case TRIANGLE_STRAIN:
+         triangleStrainActive_ = _active;
+         break;
+      case AREA_STRAIN:
+         areaStrainActive_ = _active;
+         break;
+      default:
+         break;
+      }
+   }
 
    int getObjId() { return object_id_; }
 

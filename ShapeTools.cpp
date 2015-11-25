@@ -6,15 +6,14 @@
  */
 void ShapeTools::setConstraints() {
    // Closeness constraints for fixed vertices
-   fixedConstraintIds_.clear();
    std::set<int>::iterator fixed_v_idxs_it(fixedVerticesIdx_.begin());
    for (; fixed_v_idxs_it!=fixedVerticesIdx_.end(); ++fixed_v_idxs_it) {
       std::vector<int> idx;
       idx.push_back(*fixed_v_idxs_it);
 
       // Add closeness constraint for fixed vertex
-      auto c = std::make_shared<ShapeOp::ClosenessConstraint>(idx, fixedConstraintWeight_, solver_->getPoints());
-      fixedConstraintIds_.push_back(solver_->addConstraint(c));
+      auto c = ShapeOp::Constraint::shapeConstraintFactory("Closeness", idx, fixedConstraintWeight_, solver_->getPoints());
+      if (c) solver_->addConstraint(c);
    }
 
    // Closeness constraints for handles
@@ -24,39 +23,58 @@ void ShapeTools::setConstraints() {
       std::vector<int> idx;
       idx.push_back(*idx_it);
 
-      auto c = std::make_shared<ShapeOp::ClosenessConstraint>(idx, handleConstraintWeight_, solver_->getPoints());
-      handleConstraintIds_.insert(std::make_pair(*idx_it, solver_->addConstraint(c)));
+      auto c = ShapeOp::Constraint::shapeConstraintFactory("Closeness", idx, handleConstraintWeight_, solver_->getPoints());
+      if (c) handleConstraintIds_.insert(std::make_pair(*idx_it, solver_->addConstraint(c)));
    }
 
    // Edge strain
-//   edgeStrainConstraintIds_.clear();
-//   TriMesh::EdgeIter e_it(triMesh_->edges_begin());
-//   std::vector<int> edge_v_idxs;
-//   for (; e_it!=triMesh_->edges_end(); ++e_it) {
-//      edge_v_idxs.clear();
+   if (edgeStrainActive_) {
+      TriMesh::EdgeIter e_it(triMesh_->edges_begin());
+      std::vector<int> edge_v_idxs;
+      for (; e_it!=triMesh_->edges_end(); ++e_it) {
+         edge_v_idxs.clear();
 
-//      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 0))).idx());
-//      edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 1))).idx());
+         edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 0))).idx());
+         edge_v_idxs.push_back((triMesh_->to_vertex_handle(triMesh_->halfedge_handle(*e_it, 1))).idx());
 
-//      auto c = std::make_shared<ShapeOp::EdgeStrainConstraint>(edge_v_idxs, edgeStrainWeight_, solver_->getPoints());
-//      edgeStrainConstraintIds_.push_back(solver_->addConstraint(c));
-//   }
+         auto c = ShapeOp::Constraint::shapeConstraintFactory("EdgeStrain", edge_v_idxs, edgeStrainWeight_, solver_->getPoints());
+         if (c) solver_->addConstraint(c);
+      }
+   }
 
-   // Triangle area constraint
-   std::vector<int> v_ids;
-   for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
-   {
-       v_ids.clear();
-       for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
-           v_ids.push_back((*fv_it).idx());
+   // Triangle constraint
+   if (triangleStrainActive_) {
+      std::vector<int> v_ids;
+      for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
+      {
+          v_ids.clear();
+          for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+              v_ids.push_back((*fv_it).idx());
 
-       auto c = std::make_shared<ShapeOp::TriangleStrainConstraint>(v_ids, edgeStrainWeight_, solver_->getPoints());
-       solver_->addConstraint(c);
+          auto c = ShapeOp::Constraint::shapeConstraintFactory("TriangleStrain", v_ids, triangleStrainWeight_, solver_->getPoints());
+          if (c) solver_->addConstraint(c);
+      }
+   }
+
+   // Area constraint
+   if (areaStrainActive_) {
+      std::vector<int> v_ids;
+      for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
+      {
+          v_ids.clear();
+          for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+              v_ids.push_back((*fv_it).idx());
+
+          auto c = ShapeOp::Constraint::shapeConstraintFactory("Area", v_ids, areaStrainWeight_, solver_->getPoints());
+          if (c) solver_->addConstraint(c);
+      }
    }
 }
 
 /**
- * @brief ShapeTools::setMesh Saves a pointer to the mesh and sets the positions of vertices in the solver
+ * @brief ShapeTools::setMesh Saves a pointer to the mesh, initialises a solver and sets the positions
+ * of vertices in the solver
+ *
  * @param _mesh The mesh pointer
  * @param _object_id The id of the object as set by openflipper, for later reference
  */
@@ -84,11 +102,9 @@ void ShapeTools::setMesh(TriMesh *_mesh, int _object_id) {
 }
 
 /**
- * @brief ShapeTools::moveHandle
+ * @brief ShapeTools::moveHandle Updates the position of the handles in the solver
  */
 void ShapeTools::moveHandles() {
-   if (handleIdxs_.empty()) return;
-
    std::vector<int>::iterator idx_it(handleIdxs_.begin());
    for (; idx_it!=handleIdxs_.end(); ++idx_it) {
       TriMesh::Point handle_point = triMesh_->point(triMesh_->vertex_handle(*idx_it));
@@ -110,7 +126,6 @@ bool ShapeTools::solveUpdateMesh() {
 
    // Topology or handles have changed
    if (update_needed_) {
-//      solver_ = new ShapeOp::Solver();
       setConstraints();
       solver_->initialize();
 

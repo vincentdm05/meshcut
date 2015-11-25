@@ -60,6 +60,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotMouseEvent(QMouseEvent* _event);
       // Called when another plugin performs a change on an object
       void slotObjectUpdated(int _id, const UpdateType& _type);
+      // Backup has been restored
+      void slotRestored(int _objectid);
+
       // Called when toolbar is clicked
       void toolBarTriggered(QAction* _action);
 
@@ -70,8 +73,10 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotCutSelectedEdges();
 
       /// Shape tools slots
+      void slotUseShapeToolsCheckBoxToggled();
       void slotFixSelectedVertices();
       void slotFlagUpdate();
+      void slotConstraintCheckBoxToggled();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -102,7 +107,12 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QCheckBox* clampToEdgeCheckBox_;
       QCheckBox* directCutCheckBox_;
       size_t selectionButtonToggled_;
-      QSpinBox* strainWeightSpinBox_;
+      QCheckBox* edgeStrainCheckBox_;
+      QDoubleSpinBox* edgeStrainWeightSpinBox_;
+      QCheckBox* triangleStrainCheckBox_;
+      QDoubleSpinBox* triangleStrainWeightSpinBox_;
+      QCheckBox* areaStrainCheckBox_;
+      QDoubleSpinBox* areaStrainWeightSpinBox_;
 
       Cutting* cutting_tools_;
 
@@ -120,16 +130,20 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       BaseObjectData* latest_object_;
 
       ShapeTools* shape_tools_;
+      bool use_shape_tools_;
       bool object_updated_;
 
    public:
       MeshCut() :
          toolBar_(0), mouseDown_(false), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
          clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
-         strainWeightSpinBox_(), cutting_tools_(),
+         edgeStrainCheckBox_(), edgeStrainWeightSpinBox_(),
+         triangleStrainCheckBox_(), triangleStrainWeightSpinBox_(),
+         areaStrainCheckBox_(), areaStrainWeightSpinBox_(),
+         cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),
-         shape_tools_(), object_updated_(false) {}
+         shape_tools_(), use_shape_tools_(false), object_updated_(false) {}
       ~MeshCut(){ delete cutting_tools_; delete shape_tools_; }
 
       QString name() { return QString("MeshCut"); }

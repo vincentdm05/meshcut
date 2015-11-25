@@ -14,12 +14,12 @@ void MeshCut::initializePlugin()
 {
    toolBox_ = new QWidget();
    QVBoxLayout* mainToolboxLayout = new QVBoxLayout(toolBox_);
+   QFont titleLabelFont("Arial", 15, QFont::Bold);
 
-
+   ////////////////////////////////////////////////////////////////////////////////////////////////
    /// Cutting tools
    cutting_tools_ = new Cutting();
 
-   QFont titleLabelFont("Arial", 15, QFont::Bold);
    QLabel* cuttingLabel = new QLabel("Cutting tools");
    cuttingLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(cuttingLabel);
@@ -57,36 +57,64 @@ void MeshCut::initializePlugin()
    lineSeparator->setFrameShadow(QFrame::Sunken);
    mainToolboxLayout->addWidget(lineSeparator);
 
+   ////////////////////////////////////////////////////////////////////////////////////////////////
    /// Shape tools
    shape_tools_ = new ShapeTools();
 
+   // Tool title
    QLabel* shapeLabel = new QLabel("Shape tools");
    shapeLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(shapeLabel);
+
+   // Tool use toggle
+   QCheckBox* useShapeToolsCheckBox = new QCheckBox("Use shape tools", toolBox_);
+   mainToolboxLayout->addWidget(useShapeToolsCheckBox);
 
    // Fixed vertices button
    QPushButton* fixSelectedButton = new QPushButton("Fix selected vertices", toolBox_);
    fixSelectedButton->setToolTip("Set vertices to be fixed to their current position");
    mainToolboxLayout->addWidget(fixSelectedButton);
 
-   // Strain weight
-   QHBoxLayout* strainWeightLayout = new QHBoxLayout(toolBox_);
-   strainWeightLayout->setSpacing(5);
+   // Edge strain
+   QHBoxLayout* edgeStrainLayout = new QHBoxLayout(toolBox_);
+   edgeStrainLayout->setSpacing(5);
+   edgeStrainCheckBox_ = new QCheckBox("Edge strain", toolBox_);
+   edgeStrainLayout->addWidget(edgeStrainCheckBox_);
+   edgeStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   edgeStrainWeightSpinBox_->setMinimum(0.1);
+   edgeStrainWeightSpinBox_->setMaximum(10.0);
+   edgeStrainWeightSpinBox_->setSingleStep(0.1);
+   edgeStrainWeightSpinBox_->setValue(1.0);
+   edgeStrainLayout->addWidget(edgeStrainWeightSpinBox_);
+   mainToolboxLayout->addItem(edgeStrainLayout);
 
-   QLabel* strainWeightLabel = new QLabel(toolBox_);
-   strainWeightLabel->setText(QObject::tr("Edge strain weight"));
-   strainWeightLabel->setAlignment(Qt::AlignLeft);
-   strainWeightLayout->addWidget(strainWeightLabel);
+   // Triangle strain
+   QHBoxLayout* triangleStrainLayout = new QHBoxLayout(toolBox_);
+   triangleStrainLayout->setSpacing(5);
+   triangleStrainCheckBox_ = new QCheckBox("Triangle strain", toolBox_);
+   triangleStrainLayout->addWidget(triangleStrainCheckBox_);
+   triangleStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   triangleStrainWeightSpinBox_->setMinimum(0.1);
+   triangleStrainWeightSpinBox_->setMaximum(10.0);
+   triangleStrainWeightSpinBox_->setSingleStep(0.1);
+   triangleStrainWeightSpinBox_->setValue(1.0);
+   triangleStrainLayout->addWidget(triangleStrainWeightSpinBox_);
+   mainToolboxLayout->addItem(triangleStrainLayout);
 
-   strainWeightSpinBox_ = new QSpinBox(toolBox_);
-   strainWeightSpinBox_->setMinimum(0);
-   strainWeightSpinBox_->setMaximum(100);
-   strainWeightSpinBox_->setSingleStep(1);
-   strainWeightSpinBox_->setValue(50);
-   strainWeightLayout->addWidget(strainWeightSpinBox_);
+   // Area strain
+   QHBoxLayout* areaStrainLayout = new QHBoxLayout(toolBox_);
+   areaStrainLayout->setSpacing(5);
+   areaStrainCheckBox_ = new QCheckBox("Area strain", toolBox_);
+   areaStrainLayout->addWidget(areaStrainCheckBox_);
+   areaStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   areaStrainWeightSpinBox_->setMinimum(0.1);
+   areaStrainWeightSpinBox_->setMaximum(10.0);
+   areaStrainWeightSpinBox_->setSingleStep(0.1);
+   areaStrainWeightSpinBox_->setValue(1.0);
+   areaStrainLayout->addWidget(areaStrainWeightSpinBox_);
+   mainToolboxLayout->addItem(areaStrainLayout);
 
-   mainToolboxLayout->addItem(strainWeightLayout);
-
+   ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
    mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
 
@@ -94,8 +122,15 @@ void MeshCut::initializePlugin()
    connect(selectButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
+
+   connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
    connect(fixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
-   connect(strainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(edgeStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(edgeStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(triangleStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(triangleStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(areaStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(areaStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
    emit addToolbox(tr("MeshCut"), toolBox_, toolboxIcon);
@@ -209,9 +244,15 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
                }
             }
             shape_tools_->setHandles(handle_idxs);
-            shape_tools_->setEdgeStrain(strainWeightSpinBox_->value());
+            shape_tools_->setEdgeStrain(edgeStrainWeightSpinBox_->value());
 
-            if (shape_tools_->updateNeeded()) shape_tools_->setMesh(&mesh, o_it->id());
+            if (shape_tools_->updateNeeded()) {
+               shape_tools_->setMesh(&mesh, o_it->id());
+
+               emit log(LOGOUT, "Mesh set for shape tools");
+               emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
+               emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
+            }
          } else {
             emit log(LOGWARN, "No support for polymesh yet");
             return;
@@ -230,10 +271,22 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
  * @param _type
  */
 void MeshCut::slotObjectUpdated(int _id, const UpdateType& _type) {
-   if (_type == UPDATE_GEOMETRY) {
+   if (use_shape_tools_ && _type == UPDATE_GEOMETRY) {
       object_updated_ = true;
-   } else if (_id == shape_tools_->getObjId() && _type == UPDATE_TOPOLOGY) {
+   } else if (use_shape_tools_ && _id == shape_tools_->getObjId() && _type == UPDATE_TOPOLOGY) {
       shape_tools_->flagUpdateNeeded();
+      object_updated_ = true;
+   }
+}
+
+/**
+ * @brief MeshCut::slotRestored
+ * @param _objectid
+ */
+void MeshCut::slotRestored(int _objectid) {
+   if (_objectid == shape_tools_->getObjId()) {
+      shape_tools_->flagUpdateNeeded();
+      object_updated_ = true;
    }
 }
 
@@ -593,6 +646,7 @@ void MeshCut::slotCutSelectedEdges() {
          TriMesh::EdgeIter e_it, e_end(mesh.edges_end());
          for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
             if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh)) {
+               mesh.status(*e_it).set_selected(false);
                // Cut and count
                ++n_cuts;
             }
@@ -611,6 +665,7 @@ void MeshCut::slotCutSelectedEdges() {
          PolyMesh::EdgeIter e_it, e_end(mesh.edges_end());
          for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
             if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh)) {
+               mesh.status(*e_it).set_selected(false);
                ++n_cuts;
             }
          }
@@ -621,6 +676,14 @@ void MeshCut::slotCutSelectedEdges() {
          emit createBackup(o_it->id(), "Selected edges cut", UPDATE_TOPOLOGY);
       }
    }
+}
+
+/** Toggle the use of shape tools
+ *
+ */
+void MeshCut::slotUseShapeToolsCheckBoxToggled() {
+   use_shape_tools_ = !use_shape_tools_;
+   shape_tools_->flagUpdateNeeded();
 }
 
 /** \brief Toggle closenessConstraint on selected vertices
@@ -661,6 +724,16 @@ void MeshCut::slotFixSelectedVertices() {
  *
  */
 void MeshCut::slotFlagUpdate() {
+   shape_tools_->flagUpdateNeeded();
+}
+
+/** \brief Inform the shape tools of a checkbox action
+ *
+ */
+void MeshCut::slotConstraintCheckBoxToggled() {
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::EDGE_STRAIN, edgeStrainCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::TRIANGLE_STRAIN, triangleStrainCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::AREA_STRAIN, areaStrainCheckBox_->isChecked());
    shape_tools_->flagUpdateNeeded();
 }
 
