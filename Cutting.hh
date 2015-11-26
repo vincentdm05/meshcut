@@ -32,8 +32,8 @@ private:
    void selectMarkedEdges(MeshT& mesh);
 
    // Determine whether a point lies on a segment
-   template<typename VecType>
-   bool isOnSegment(VecType p, VecType s0, VecType s1, double prec = 0.05);
+   template<typename Vec3Type>
+   bool isOnSegment(Vec3Type p, Vec3Type s0, Vec3Type s1, double prec = 0.05);
 
    // Get edge between two vertices
    template<typename MeshT>
@@ -89,9 +89,9 @@ public:
    void clampAndSelect(MeshT& mesh);
 
    // Find if two segments intersect and set intersection_point if appropriate
-   template<typename VecType>
-   int segmentIntersect(VecType p0, VecType p1,
-                         VecType q0, VecType q1, VecType* intersection_point, double prec = 1e-16);
+   template<typename Vec3Type>
+   int segmentIntersect(Vec3Type p0, Vec3Type p1,
+                         Vec3Type q0, Vec3Type q1, Vec3Type* intersection_point, double prec = 1e-16);
 
    // Cut along a single edge
    template<typename MeshT>
@@ -147,30 +147,35 @@ public:
  * Thanks to Ronald Goldman, on "Intersection of two lines in three-space" in Graphics Gems 1st ed., p.304
  *
  * Find point of intersection on segment [q0, q1] by half-line [p0, p1).
- * If no intersection is found, false is returned, otherwise intersection_point is set to the point of
- * intersection and true is returned.
+ * If an intersection is found, intersection_point is set to the point of intersection.
+ * If the lines are collinear, the intersection is set to be the point of the segment that is inside of the
+ * half-line.
  *
  * @param p0 The starting point of the halfline
  * @param p1 The point defining the direction of the halfline
  * @param q0 The start of the segment
  * @param q1 The end of the segment
- * @param intersection_point A pointer to a Eigen::Vector3d object for the intersection point
+ * @param intersection_point A pointer to a Vec3Type object for the intersection point
  * @param prec The precision with which to define collinearity and parallelism
  * @return INTERSECT_NO | INTERSECT_PARALLEL | INTERSECT_COLLINEAR | INTERSECT_OK
  */
-template<typename VecType>
-int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, VecType *intersection_point, double prec) {
+template<typename Vec3Type>
+int Cutting::segmentIntersect(Vec3Type _p0, Vec3Type _p1, Vec3Type _q0, Vec3Type _q1, Vec3Type *intersection_point, double prec) {
+   Eigen::Vector3d p0(_p0[0], _p0[1], _p0[2]);
+   Eigen::Vector3d p1(_p1[0], _p1[1], _p1[2]);
+   Eigen::Vector3d q0(_q0[0], _q0[1], _q0[2]);
+   Eigen::Vector3d q1(_q1[0], _q1[1], _q1[2]);
 
    // Vectors from start to end of each segment
-   VecType vp = p1 - p0;
-   VecType vq = q1 - q0;
+   Eigen::Vector3d vp = p1 - p0;
+   Eigen::Vector3d vq = q1 - q0;
 
    // Precompute difference and cross product
-   VecType diff = q0 - p0;
-   VecType cross_prod = vp.cross(vq);
+   Eigen::Vector3d diff = q0 - p0;
+   Eigen::Vector3d cross_prod = vp.cross(vq);
 
-   VecType diffCrossVq = diff.cross(vq);
-   VecType diffCrossVp = diff.cross(vp);
+   Eigen::Vector3d diffCrossVq = diff.cross(vq);
+   Eigen::Vector3d diffCrossVp = diff.cross(vp);
 
    // Denominator
    double denom = cross_prod.norm() * cross_prod.norm();
@@ -178,7 +183,11 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
    if (denom < prec) {
       if (diffCrossVp.norm() < prec || diffCrossVq.norm() < prec) {
          // Lines are collinear
-         *intersection_point = isOnSegment(q0, p0, p1) ? q0 : q1;
+         if (isOnSegment(q0, p0, p1)) {
+            *intersection_point = Vec3Type(q0[0], q0[1], q0[2]);
+         } else {
+            *intersection_point = Vec3Type(q1[0], q1[1], q1[2]);
+         }
          return INTERSECT_COLLINEAR;
       }
       // Lines are parallel
@@ -190,7 +199,8 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
    double s = diffCrossVp.dot(cross_prod) / denom;
 
    if (t >= 0 && s >= 0 && s <= 1) {
-      *intersection_point = q0 + s * vq;
+      Eigen::Vector3d point = q0 + s * vq;
+      *intersection_point = Vec3Type(point[0], point[1], point[2]);
       return INTERSECT_OK;
    }
 
@@ -204,11 +214,15 @@ int Cutting::segmentIntersect(VecType p0, VecType p1, VecType q0, VecType q1, Ve
  * @param s1 The end of the segment
  * @param prec The precision asked of the comparison between cross product and zero
  */
-template<typename VecType>
-bool Cutting::isOnSegment(VecType p, VecType s0, VecType s1, double prec) {
+template<typename Vec3Type>
+bool Cutting::isOnSegment(Vec3Type _p, Vec3Type _s0, Vec3Type _s1, double prec) {
+   Eigen::Vector3d p(_p[0], _p[1], _p[2]);
+   Eigen::Vector3d s0(_s0[0], _s0[1], _s0[2]);
+   Eigen::Vector3d s1(_s1[0], _s1[1], _s1[2]);
+
    // Increase precision by taking furthest point
-   VecType segment;
-   VecType point_local;
+   Eigen::Vector3d segment;
+   Eigen::Vector3d point_local;
    if ((p-s0).norm() > (p-s1).norm()) {
       segment = s1 - s0;
       point_local = p - s0;
@@ -216,7 +230,7 @@ bool Cutting::isOnSegment(VecType p, VecType s0, VecType s1, double prec) {
       segment = s0 - s1;
       point_local = p - s1;
    }
-   VecType cross = point_local.cross(segment);
+   Eigen::Vector3d cross = point_local.cross(segment);
    if (cross.isZero(prec)) {
       double t = point_local.dot(segment) / (segment.norm() * segment.norm());
       // Point is in range
@@ -658,41 +672,44 @@ int Cutting::closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh
 
 /** \brief Find point of crossing a face outward
  *
- * If _point_inside is inside the face without being too close to and edge, the
- * return value will be the point of intersection of the line defined by
- * (_point_inside, _point_outside) and an edge of the face. In this case
- * crossed_edge_idx will be set to the index of the edge crossed.
- * On the other hand if _point_inside lies too close to an edge, the line will
- * be detected as collinear with that edge and the return value will be set to
- * the position of the vertex inside the range [_point_inside, _point_outside].
- * In that case crossed_edge_idx will be set to -1.
+ * Given a face, we iterate over its edges and compute the intersection with the half-line
+ * defined by [_point_inside, _point_outside). The return value is set to be the crossing
+ * of this half-line with one of the edges and crossed_edge_idx is set to the index of the
+ * crossed edge.
+ * Note that is does not matter if _point_inside lies on top of an edge as this intersection
+ * will simply be ignored.
+ * If the half-line is outside of the face and doesn't cross it at any edge, the return
+ * value as well as crossed_edges_idx will not be set.
  *
  * @param _point_inside The point inside the face
  * @param _point_outside The point outside the face
  * @param _face_idx The index of the face
  * @param crossed_edge_idx [out] The index of the crossed edge if an intersection
- *    was found successfully, or -1 if the lines were collinear
+ *    was found successfully, or -1 if not
  * @param mesh The mesh
  * @return The intersection point
  */
 template<typename Vec3Type, typename MeshT>
 Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const Vec3Type _point_outside,
                                           int _face_idx, int& crossed_edge_idx, MeshT& mesh, float prec) {
+   Eigen::Vector3d point_inside(_point_inside[0], _point_inside[1], _point_inside[2]);
+   Eigen::Vector3d point_outside(_point_outside[0], _point_outside[1], _point_outside[2]);
+
    // Find crossed edge and point
-   Vec3Type intersection_point;
+   Eigen::Vector3d intersection_point(0.0);
    typename MeshT::FaceHalfedgeIter fh_it = mesh.fh_iter(mesh.face_handle(_face_idx));
    for (; fh_it; ++fh_it) {
       typename MeshT::Point point_from = mesh.point(mesh.from_vertex_handle(*fh_it));
-      Vec3Type q0(point_from[0], point_from[1], point_from[2]);
+      Eigen::Vector3d q0(point_from[0], point_from[1], point_from[2]);
       typename MeshT::Point point_to = mesh.point(mesh.to_vertex_handle(*fh_it));
-      Vec3Type q1(point_to[0], point_to[1], point_to[2]);
+      Eigen::Vector3d q1(point_to[0], point_to[1], point_to[2]);
 
       // Get intersection point
-      int intersection_result = segmentIntersect(_point_inside, _point_outside, q0, q1, &intersection_point);
+      /// TODO: analyse needed precisions in segmentIntersect to be able to avoid same point accurately afterwards
+      int intersection_result = segmentIntersect(point_inside, point_outside, q0, q1, &intersection_point);
 
-      // Avoid same point
-      if ((_point_inside - intersection_point).isZero(prec) &&
-          ((_point_inside - q0).isZero(prec) || (_point_inside - q1).isZero(prec))) continue;
+      // Avoid same point if entry point was on an edge
+      if ((point_inside - intersection_point).isZero(prec)) continue;
 
       if (intersection_result == INTERSECT_OK) {
          crossed_edge_idx = mesh.edge_handle(*fh_it).idx();
@@ -703,7 +720,7 @@ Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const V
       }
    }
 
-   return intersection_point;
+   return Vec3Type(intersection_point[0], intersection_point[1], intersection_point[2]);
 }
 
 /** \brief Given a triangle and a point, project point to plane defined by triangle
