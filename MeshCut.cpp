@@ -75,16 +75,39 @@ void MeshCut::initializePlugin()
    fixSelectedButton->setToolTip("Set vertices to be fixed to their current position");
    mainToolboxLayout->addWidget(fixSelectedButton);
 
+   /// Constraints
+   // Titles
+   QHBoxLayout* constraintTitlesLayout = new QHBoxLayout(toolBox_);
+   constraintTitlesLayout->setSpacing(5);
+   QLabel* constraintTypeLabel = new QLabel(toolBox_);
+   constraintTypeLabel->setText("Constraint type");
+   constraintTypeLabel->setAlignment(Qt::AlignLeft);
+   constraintTitlesLayout->addWidget(constraintTypeLabel);
+   QLabel* constraintMinLabel = new QLabel(toolBox_);
+   constraintMinLabel->setText("Min");
+   constraintMinLabel->setAlignment(Qt::AlignCenter);
+   constraintTitlesLayout->addWidget(constraintMinLabel);
+   QLabel* constraintMaxLabel = new QLabel(toolBox_);
+   constraintMaxLabel->setText("Max");
+   constraintMaxLabel->setAlignment(Qt::AlignCenter);
+   constraintTitlesLayout->addWidget(constraintMaxLabel);
+   QLabel* constraintWeightLabel = new QLabel(toolBox_);
+   constraintWeightLabel->setText("Weight");
+   constraintWeightLabel->setAlignment(Qt::AlignRight);
+   constraintTitlesLayout->addWidget(constraintWeightLabel);
+   mainToolboxLayout->addItem(constraintTitlesLayout);
+
    // Edge strain
    QHBoxLayout* edgeStrainLayout = new QHBoxLayout(toolBox_);
    edgeStrainLayout->setSpacing(5);
    edgeStrainCheckBox_ = new QCheckBox("Edge strain", toolBox_);
    edgeStrainLayout->addWidget(edgeStrainCheckBox_);
+   edgeStrainLayout->addItem(new QSpacerItem(10, 0, QSizePolicy::Expanding, QSizePolicy::Expanding));
    edgeStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
-   edgeStrainWeightSpinBox_->setMinimum(0.1);
-   edgeStrainWeightSpinBox_->setMaximum(10.0);
-   edgeStrainWeightSpinBox_->setSingleStep(0.1);
-   edgeStrainWeightSpinBox_->setValue(1.0);
+   edgeStrainWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   edgeStrainWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   edgeStrainWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   edgeStrainWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    edgeStrainLayout->addWidget(edgeStrainWeightSpinBox_);
    mainToolboxLayout->addItem(edgeStrainLayout);
 
@@ -93,26 +116,78 @@ void MeshCut::initializePlugin()
    triangleStrainLayout->setSpacing(5);
    triangleStrainCheckBox_ = new QCheckBox("Triangle strain", toolBox_);
    triangleStrainLayout->addWidget(triangleStrainCheckBox_);
+   triangleStrainLayout->addItem(new QSpacerItem(10, 0, QSizePolicy::Expanding, QSizePolicy::Expanding));
    triangleStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
-   triangleStrainWeightSpinBox_->setMinimum(0.1);
-   triangleStrainWeightSpinBox_->setMaximum(10.0);
-   triangleStrainWeightSpinBox_->setSingleStep(0.1);
-   triangleStrainWeightSpinBox_->setValue(1.0);
+   triangleStrainWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   triangleStrainWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   triangleStrainWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   triangleStrainWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    triangleStrainLayout->addWidget(triangleStrainWeightSpinBox_);
    mainToolboxLayout->addItem(triangleStrainLayout);
 
-   // Area strain
-   QHBoxLayout* areaStrainLayout = new QHBoxLayout(toolBox_);
-   areaStrainLayout->setSpacing(5);
-   areaStrainCheckBox_ = new QCheckBox("Area strain", toolBox_);
-   areaStrainLayout->addWidget(areaStrainCheckBox_);
-   areaStrainWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
-   areaStrainWeightSpinBox_->setMinimum(0.1);
-   areaStrainWeightSpinBox_->setMaximum(10.0);
-   areaStrainWeightSpinBox_->setSingleStep(0.1);
-   areaStrainWeightSpinBox_->setValue(1.0);
-   areaStrainLayout->addWidget(areaStrainWeightSpinBox_);
-   mainToolboxLayout->addItem(areaStrainLayout);
+   // Area constraint
+   QHBoxLayout* areaConstraintLayout = new QHBoxLayout(toolBox_);
+   areaConstraintLayout->setSpacing(5);
+   areaConstraintCheckBox_ = new QCheckBox("Area", toolBox_);
+   areaConstraintLayout->addWidget(areaConstraintCheckBox_);
+   areaConstraintMinSpinBox_ = new QDoubleSpinBox(toolBox_);
+   areaConstraintMinSpinBox_->setMinimum(RANGE_MIN);
+   areaConstraintMinSpinBox_->setMaximum(RANGE_MAX);
+   areaConstraintMinSpinBox_->setSingleStep(RANGE_STEP);
+   areaConstraintMinSpinBox_->setValue(RANGE_DEFAULT);
+   areaConstraintLayout->addWidget(areaConstraintMinSpinBox_);
+   areaConstraintMaxSpinBox_ = new QDoubleSpinBox(toolBox_);
+   areaConstraintMaxSpinBox_->setMinimum(RANGE_MIN);
+   areaConstraintMaxSpinBox_->setMaximum(RANGE_MAX);
+   areaConstraintMaxSpinBox_->setSingleStep(RANGE_STEP);
+   areaConstraintMaxSpinBox_->setValue(RANGE_DEFAULT);
+   areaConstraintLayout->addWidget(areaConstraintMaxSpinBox_);
+   areaConstraintWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   areaConstraintWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   areaConstraintWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   areaConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   areaConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
+   areaConstraintLayout->addWidget(areaConstraintWeightSpinBox_);
+   mainToolboxLayout->addItem(areaConstraintLayout);
+
+   // Bending constraint
+   QHBoxLayout* bendingConstraintLayout = new QHBoxLayout(toolBox_);
+   bendingConstraintLayout->setSpacing(5);
+   bendingConstraintCheckBox_ = new QCheckBox("Bending", toolBox_);
+   bendingConstraintLayout->addWidget(bendingConstraintCheckBox_);
+   bendingConstraintMinSpinBox_ = new QDoubleSpinBox(toolBox_);
+   bendingConstraintMinSpinBox_->setMinimum(RANGE_MIN);
+   bendingConstraintMinSpinBox_->setMaximum(RANGE_MAX);
+   bendingConstraintMinSpinBox_->setSingleStep(RANGE_STEP);
+   bendingConstraintMinSpinBox_->setValue(RANGE_DEFAULT);
+   bendingConstraintLayout->addWidget(bendingConstraintMinSpinBox_);
+   bendingConstraintMaxSpinBox_ = new QDoubleSpinBox(toolBox_);
+   bendingConstraintMaxSpinBox_->setMinimum(RANGE_MIN);
+   bendingConstraintMaxSpinBox_->setMaximum(RANGE_MAX);
+   bendingConstraintMaxSpinBox_->setSingleStep(RANGE_STEP);
+   bendingConstraintMaxSpinBox_->setValue(RANGE_DEFAULT);
+   bendingConstraintLayout->addWidget(bendingConstraintMaxSpinBox_);
+   bendingConstraintWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   bendingConstraintWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   bendingConstraintWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   bendingConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   bendingConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
+   bendingConstraintLayout->addWidget(bendingConstraintWeightSpinBox_);
+   mainToolboxLayout->addItem(bendingConstraintLayout);
+
+   // Instantaneous update
+   QHBoxLayout* updateNowLayout = new QHBoxLayout(toolBox_);
+   updateNowLayout->setSpacing(5);
+   QPushButton* updateButton = new QPushButton("Update now", toolBox_);
+   updateNowLayout->addWidget(updateButton);
+   nSolverIterationsSpinBox_ = new QSpinBox(toolBox_);
+   nSolverIterationsSpinBox_->setMinimum(1);
+   nSolverIterationsSpinBox_->setMaximum(100);
+   nSolverIterationsSpinBox_->setSingleStep(1);
+   nSolverIterationsSpinBox_->setValue(10);
+   updateNowLayout->addWidget(nSolverIterationsSpinBox_);
+   mainToolboxLayout->addItem(updateNowLayout);
+
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
@@ -126,11 +201,18 @@ void MeshCut::initializePlugin()
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
    connect(fixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
    connect(edgeStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
-   connect(edgeStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(edgeStrainWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(triangleStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
-   connect(triangleStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
-   connect(areaStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
-   connect(areaStrainWeightSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(triangleStrainWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(areaConstraintCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(areaConstraintMinSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(areaConstraintMaxSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(areaConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(bendingConstraintCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(bendingConstraintMinSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(bendingConstraintMaxSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(bendingConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(updateButton, SIGNAL(clicked()), this, SLOT(slotUpdateMesh()));
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
    emit addToolbox(tr("MeshCut"), toolBox_, toolboxIcon);
@@ -229,38 +311,7 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
       mouseDraw(_event);
    } else if (object_updated_ && PluginFunctions::pickMode() == "MoveSelection" &&
               PluginFunctions::actionMode() == Viewer::PickingMode) {
-
-      PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
-      for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
-         if (o_it->dataType(DATA_TRIANGLE_MESH)) {
-            TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
-
-            // Find handle index
-            std::vector<int> handle_idxs;
-            TriMesh::VertexIter v_it(mesh.vertices_begin());
-            for (; v_it!=mesh.vertices_end(); ++v_it) {
-               if (mesh.status(*v_it).selected()) {
-                  handle_idxs.push_back((*v_it).idx());
-               }
-            }
-            shape_tools_->setHandles(handle_idxs);
-            shape_tools_->setEdgeStrain(edgeStrainWeightSpinBox_->value());
-
-            if (shape_tools_->updateNeeded()) {
-               shape_tools_->setMesh(&mesh, o_it->id());
-
-               emit log(LOGOUT, "Mesh set for shape tools");
-               emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
-               emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
-            }
-         } else {
-            emit log(LOGWARN, "No support for polymesh yet");
-            return;
-         }
-         /// TODO: support multiple objects
-         break;
-      }
-      shape_tools_->solveUpdateMesh();
+      updateMesh();
       object_updated_ = false;
    }
 }
@@ -630,6 +681,84 @@ void MeshCut::applyCurve(BaseObjectData *object) {
    emit createBackup(object->id(), "Path application", UPDATE_TOPOLOGY);
 }
 
+/** \brief Update mesh after a change in topology or geometry
+ *
+ */
+void MeshCut::updateMesh(bool _specify_n_iterations) {
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+
+         // Find handle index
+         std::vector<int> handle_idxs;
+         TriMesh::VertexIter v_it(mesh.vertices_begin());
+         for (; v_it!=mesh.vertices_end(); ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               handle_idxs.push_back((*v_it).idx());
+            }
+         }
+         shape_tools_->setHandles(handle_idxs);
+         shape_tools_->setWeightsAndRanges(edgeStrainWeightSpinBox_->value(),
+                                           triangleStrainWeightSpinBox_->value(),
+                                           areaConstraintMinSpinBox_->value(),
+                                           areaConstraintMaxSpinBox_->value(),
+                                           areaConstraintWeightSpinBox_->value(),
+                                           bendingConstraintMinSpinBox_->value(),
+                                           bendingConstraintMaxSpinBox_->value(),
+                                           bendingConstraintWeightSpinBox_->value());
+
+         if (shape_tools_->updateNeeded()) {
+            shape_tools_->setMesh(&mesh, o_it->id());
+
+            emit log(LOGOUT, "TriMesh set for shape tools");
+            emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
+            emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
+         }
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
+
+         // Find handle index
+         std::vector<int> handle_idxs;
+         PolyMesh::VertexIter v_it(mesh.vertices_begin());
+         for (; v_it!=mesh.vertices_end(); ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               handle_idxs.push_back((*v_it).idx());
+            }
+         }
+         shape_tools_->setHandles(handle_idxs);
+         shape_tools_->setWeightsAndRanges(edgeStrainWeightSpinBox_->value(),
+                                           triangleStrainWeightSpinBox_->value(),
+                                           areaConstraintMinSpinBox_->value(),
+                                           areaConstraintMaxSpinBox_->value(),
+                                           areaConstraintWeightSpinBox_->value(),
+                                           bendingConstraintMinSpinBox_->value(),
+                                           bendingConstraintMaxSpinBox_->value(),
+                                           bendingConstraintWeightSpinBox_->value());
+
+         if (shape_tools_->updateNeeded()) {
+            shape_tools_->setMesh(&mesh, o_it->id());
+
+            emit log(LOGOUT, "PolyMesh set for shape tools");
+            emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
+            emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
+         }
+      }
+
+      if (_specify_n_iterations) {
+         shape_tools_->solveUpdateMesh(nSolverIterationsSpinBox_->value());
+      } else {
+         shape_tools_->solveUpdateMesh();
+      }
+
+      emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
+      emit updateView();
+
+      /// TODO: support multiple objects
+      break;
+   }
+}
+
 /** \brief Cuts all selected edges
  * For all the meshes, look at all the selected edges and cut them
  * one by one.
@@ -693,9 +822,9 @@ void MeshCut::slotFixSelectedVertices() {
    std::set<int> v_idxs;
    PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
    for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      v_idxs.clear();
 
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
-         v_idxs.clear();
          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
 
          TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
@@ -708,9 +837,22 @@ void MeshCut::slotFixSelectedVertices() {
 //               mesh.set_color(*v_it, OpenMesh::Vec4f(0.4f,0.2f,0.6f,1.0f));
             }
          }
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
-         shape_tools_->fixVertices(v_idxs);
+         PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               v_idxs.insert((*v_it).idx());
+
+               mesh.status(*v_it).set_selected(false);
+               /// TODO: find a way to color that
+//               mesh.set_color(*v_it, OpenMesh::Vec4f(0.4f,0.2f,0.6f,1.0f));
+            }
+         }
       }
+
+      shape_tools_->fixVertices(v_idxs);
       emit updatedObject(o_it->id(), UPDATE_SELECTION);
 
       /// At the moment, only one object is supported
@@ -733,8 +875,13 @@ void MeshCut::slotFlagUpdate() {
 void MeshCut::slotConstraintCheckBoxToggled() {
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::EDGE_STRAIN, edgeStrainCheckBox_->isChecked());
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::TRIANGLE_STRAIN, triangleStrainCheckBox_->isChecked());
-   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::AREA_STRAIN, areaStrainCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::AREA, areaConstraintCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::BENDING, bendingConstraintCheckBox_->isChecked());
    shape_tools_->flagUpdateNeeded();
+}
+
+void MeshCut::slotUpdateMesh() {
+   updateMesh(true);
 }
 
 

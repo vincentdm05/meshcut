@@ -199,8 +199,8 @@ int Cutting::segmentIntersect(Vec3Type _p0, Vec3Type _p1, Vec3Type _q0, Vec3Type
    double s = diffCrossVp.dot(cross_prod) / denom;
 
    if (t >= 0 && s >= 0 && s <= 1) {
-      Eigen::Vector3d point = q0 + s * vq;
-      *intersection_point = Vec3Type(point[0], point[1], point[2]);
+      Eigen::Vector3d ip = q0 + s * vq;
+      *intersection_point = Vec3Type(ip[0], ip[1], ip[2]);
       return INTERSECT_OK;
    }
 
@@ -261,6 +261,7 @@ void Cutting::splitAndSelect(MeshT &mesh) {
 
       // Manage case where no split is needed
       if (edge == -1) {
+         /// TODO: segfault here
          int v_idx = closest_connected_vertex(v_edges_to_select_.back(), point, mesh);
          v_edges_to_select_.push(v_idx);
          edges_to_split_.pop();
@@ -330,43 +331,93 @@ void Cutting::clampAndSelect(MeshT& mesh) {
 
    while (recorded_path_.size() > 1) {
       // Advance until there is a change of vertex
-      PathPoint prev_point = recorded_path_.front();
-      recorded_path_.pop_front();
       PathPoint curr_point = recorded_path_.front();
-      while (recorded_path_.size() > 1 && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) {
-         prev_point = curr_point;
+      recorded_path_.pop_front();
+      PathPoint next_point = recorded_path_.front();
+      while (recorded_path_.size() > 1 && std::get<TUPLE_VERTEX>(next_point) == std::get<TUPLE_VERTEX>(curr_point)) {
+         curr_point = next_point;
          recorded_path_.pop_front();
-         curr_point = recorded_path_.front();
+         next_point = recorded_path_.front();
       }
-      if (recorded_path_.empty() && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(prev_point)) break;
+      if (recorded_path_.size() < 2 && std::get<TUPLE_VERTEX>(next_point) == std::get<TUPLE_VERTEX>(curr_point)) break;
+
+      /// TODO: check if edge is connected to vertex, otherwise skip.
+      /// This is due to obtuse triangles, where the path gets closer to the opposite vertex when following an edge.
 
       // Get the two points and their closest edge
-      ACG::Vec3d prev_hit_point = std::get<TUPLE_POINT>(prev_point);
-      int prev_edge = std::get<TUPLE_EDGE>(prev_point);
-      ACG::Vec3d curr_hit_point = std::get<TUPLE_POINT>(curr_point);
+//      ACG::Vec3d curr_hit_point = std::get<TUPLE_POINT>(curr_point);
       int curr_edge = std::get<TUPLE_EDGE>(curr_point);
+      ACG::Vec3d next_hit_point = std::get<TUPLE_POINT>(next_point);
+      int next_edge = std::get<TUPLE_EDGE>(next_point);
 
-      int curr_path_vertex = std::get<TUPLE_VERTEX>(curr_point);
-      if (prev_edge == curr_edge) {
-         v_edges_to_select_.push(curr_path_vertex);
-      } else {
-         // Project path to triangle plane
-         typename MeshT::FaceHandle prev_face = mesh.face_handle(std::get<TUPLE_FACE>(prev_point));
-         Eigen::Vector3d p0(prev_hit_point[0], prev_hit_point[1], prev_hit_point[2]);
-         Eigen::Vector3d curr_p(curr_hit_point[0], curr_hit_point[1], curr_hit_point[2]);
-         Eigen::Vector3d p1 = projectToFacePlane(curr_p, prev_face.idx(), mesh);
+      int next_path_vertex = std::get<TUPLE_VERTEX>(next_point);
+      if (curr_edge == next_edge) {
+         v_edges_to_select_.push(next_path_vertex);
+      }
+      // Jump
+      else {
+         continue;
+         /// TODO: idea: change the logic of this with only checking for closest vertex until
+         /// next hit point lies on one-ring faces, all without projection.
+         /// Compute the distance from current vertex to neighbours and compare to next hit point.
+         /// If the next hit point is inside this "cell" then check whether it's the same vertex,
+         /// if yes we're done, otherwise record its vertex and we're done.
+         /// If it's not inside we find the closest neighbouring vertex to jump line and iterate.
+//         // Project path to face plane
+//         int curr_face_idx = std::get<TUPLE_FACE>(curr_point);
+//         ACG::Vec3d projected_next_point = projectToFacePlane(next_hit_point, curr_face_idx, mesh);
 
-         // Get outward face crossing point
-         int crossed_edge_idx = -1;
-         Eigen::Vector3d face_crossing = findOutgoingFaceCrossing(p0, p1, prev_face.idx(), crossed_edge_idx, mesh);
+         typename MeshT::VertexHandle current_vertex = mesh.vertex_handle(std::get<TUPLE_VERTEX>(curr_point));
+         ACG::Vec3d curr_v_point = mesh.point(current_vertex);
+         double dist_curr_v_to_next_point = (curr_v_point - next_hit_point).norm();
+         bool next_point_is_neighbour = false;
 
-         // Get next vertex on path
-         curr_path_vertex = closestVertexOnFace(face_crossing, prev_face.idx(), mesh);
-         if (curr_path_vertex != v_edges_to_select_.front())
-            v_edges_to_select_.push(curr_path_vertex);
+         // Circulate around one-ring neighbours of current vertex to find next vertex closest to path
+         typename MeshT::VertexVertexIter vv_it = mesh.vv_iter(current_vertex);
+         double min_dist = ACG::Geometry::distPointLineSquared(mesh.point(*vv_it), curr_v_point, next_hit_point);
+         ++vv_it;
+         int candidate_next_vertex_idx = (*vv_it).idx();
+         for (; vv_it; ++vv_it) {
+            double dist_curr_v_to_neighbour = (curr_v_point - mesh.point(*vv_it)).norm();
 
-         // Project path to next face
-         /// TODO
+            double dist = ACG::Geometry::distPointLineSquared(mesh.point(*vv_it), curr_v_point, next_hit_point);
+            if (dist < min_dist) {
+               min_dist = dist;
+               candidate_next_vertex_idx = (*vv_it).idx();
+
+               // Keep track of proximity of next point
+               next_point_is_neighbour = (dist_curr_v_to_next_point < dist_curr_v_to_neighbour);
+            }
+         }
+         std::cout << "candidate: " << candidate_next_vertex_idx << std::endl;
+
+         if (!next_point_is_neighbour) {
+            v_edges_to_select_.push(candidate_next_vertex_idx);
+
+            recorded_path_.push_front(std::make_tuple(ACG::Vec3d(), -1, -1, candidate_next_vertex_idx));
+         }
+
+//         // Record path
+//         v_edges_to_select_.push(candidate_next_vertex_idx);
+
+//         /// TODO: check whether using the closest vertex instead of hit_point is valid
+//         // Get outward face crossing point
+//         int crossed_edge_idx = -1;
+//         ACG::Vec3d face_crossing = findOutgoingFaceCrossing(
+//                  curr_hit_point, projected_next_point, curr_face_idx, crossed_edge_idx, mesh);
+//         /// TODO: segfault here
+//         if (crossed_edge_idx < 0) continue;
+
+//         // Get opposite face
+//         typename MeshT::HalfedgeHandle crossed_halfedge = mesh.halfedge_handle(mesh.edge_handle(crossed_edge_idx), 0);
+//         if ((mesh.face_handle(crossed_halfedge).idx()) == curr_face_idx)
+//            crossed_halfedge = mesh.opposite_halfedge_handle(crossed_halfedge);
+//         int opposite_face_idx = (mesh.face_handle(crossed_halfedge)).idx();
+
+//         // Continue with recursion
+//         PathPoint candidate_next_path_point = std::make_tuple(
+//                  face_crossing, opposite_face_idx, crossed_edge_idx, candidate_next_vertex_idx);
+//         recorded_path_.push_front(candidate_next_path_point);
       }
    }
 

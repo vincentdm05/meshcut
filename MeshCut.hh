@@ -77,6 +77,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotFixSelectedVertices();
       void slotFlagUpdate();
       void slotConstraintCheckBoxToggled();
+      void slotUpdateMesh();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -96,6 +97,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjectData *object);
       // Finalize mouse interaction
       void applyCurve(BaseObjectData* object);
+      void updateMesh(bool _specify_n_iterations = false);
 
       QToolBar* toolBar_;
       bool mouseDown_;
@@ -107,12 +109,25 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QCheckBox* clampToEdgeCheckBox_;
       QCheckBox* directCutCheckBox_;
       size_t selectionButtonToggled_;
+
       QCheckBox* edgeStrainCheckBox_;
       QDoubleSpinBox* edgeStrainWeightSpinBox_;
+
       QCheckBox* triangleStrainCheckBox_;
       QDoubleSpinBox* triangleStrainWeightSpinBox_;
-      QCheckBox* areaStrainCheckBox_;
-      QDoubleSpinBox* areaStrainWeightSpinBox_;
+
+      QCheckBox* areaConstraintCheckBox_;
+      QDoubleSpinBox* areaConstraintMinSpinBox_;
+      QDoubleSpinBox* areaConstraintMaxSpinBox_;
+      QDoubleSpinBox* areaConstraintWeightSpinBox_;
+
+      QCheckBox* bendingConstraintCheckBox_;
+      QDoubleSpinBox* bendingConstraintMinSpinBox_;
+      QDoubleSpinBox* bendingConstraintMaxSpinBox_;
+      QDoubleSpinBox* bendingConstraintWeightSpinBox_;
+
+      QSpinBox* nSolverIterationsSpinBox_;
+
 
       Cutting* cutting_tools_;
 
@@ -139,7 +154,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
          edgeStrainCheckBox_(), edgeStrainWeightSpinBox_(),
          triangleStrainCheckBox_(), triangleStrainWeightSpinBox_(),
-         areaStrainCheckBox_(), areaStrainWeightSpinBox_(),
+         areaConstraintCheckBox_(), areaConstraintMinSpinBox_(), areaConstraintMaxSpinBox_(), areaConstraintWeightSpinBox_(),
+         bendingConstraintCheckBox_(), bendingConstraintMinSpinBox_(), bendingConstraintMaxSpinBox_(), bendingConstraintWeightSpinBox_(),
+         nSolverIterationsSpinBox_(),
          cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),
