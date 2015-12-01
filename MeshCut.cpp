@@ -39,23 +39,34 @@ void MeshCut::initializePlugin()
 
    mainToolboxLayout->addItem(toggleLayout);
 
-   clampToEdgeCheckBox_ = new QCheckBox("Clamp drawn curve to mesh edges");
+   clampToEdgeCheckBox_ = new QCheckBox("Clamp drawn curve to mesh edges", toolBox_);
    mainToolboxLayout->addWidget(clampToEdgeCheckBox_);
 
    /// TODO: make this possible first
-   directCutCheckBox_ = new QCheckBox("Cut directly as the mouse clicks");
+//   directCutCheckBox_ = new QCheckBox("Cut directly as the mouse clicks", toolBox_);
 //   mainToolboxLayout->addWidget(directCutCheckBox_);
+
+   independantCutsCheckBox_ = new QCheckBox("Don't split vertices", toolBox_);
+   mainToolboxLayout->addWidget(independantCutsCheckBox_);
 
    QPushButton* cutButton = new QPushButton("&Cut selected", toolBox_);
    cutButton->setToolTip("Cut selected edges.");
    mainToolboxLayout->addWidget(cutButton);
 
-   // Add a line separator between tools
+//   QPushButton* attachButton = new QPushButton("&Attach selected", toolBox_);
+//   attachButton->setToolTip("Attach selected vertices together");
+//   mainToolboxLayout->addWidget(attachButton);
+
+   QPushButton* splitVertexButton = new QPushButton("&Split selected vertices", toolBox_);
+   splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
+   mainToolboxLayout->addWidget(splitVertexButton);
+
+   // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
-   QFrame* lineSeparator = new QFrame();
-   lineSeparator->setFrameShape(QFrame::HLine);
-   lineSeparator->setFrameShadow(QFrame::Sunken);
-   mainToolboxLayout->addWidget(lineSeparator);
+   QFrame* lineSeparator0 = new QFrame();
+   lineSeparator0->setFrameShape(QFrame::HLine);
+   lineSeparator0->setFrameShadow(QFrame::Sunken);
+   mainToolboxLayout->addWidget(lineSeparator0);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    /// Shape tools
@@ -66,7 +77,7 @@ void MeshCut::initializePlugin()
    shapeLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(shapeLabel);
 
-   // Tool use toggle
+   // Shape tools usage toggle
    QCheckBox* useShapeToolsCheckBox = new QCheckBox("Use shape tools", toolBox_);
    mainToolboxLayout->addWidget(useShapeToolsCheckBox);
 
@@ -175,6 +186,21 @@ void MeshCut::initializePlugin()
    bendingConstraintLayout->addWidget(bendingConstraintWeightSpinBox_);
    mainToolboxLayout->addItem(bendingConstraintLayout);
 
+   // Rectangle constraint
+   QHBoxLayout* rectConstraintLayout = new QHBoxLayout(toolBox_);
+   rectConstraintLayout->setSpacing(5);
+   rectConstraintCheckBox_ = new QCheckBox("Rectangle constraint", toolBox_);
+   rectConstraintLayout->addWidget(rectConstraintCheckBox_);
+   rectConstraintLayout->addItem(new QSpacerItem(10, 0, QSizePolicy::Expanding, QSizePolicy::Expanding));
+   rectConstraintWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   rectConstraintWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   rectConstraintWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   rectConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   rectConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
+   rectConstraintLayout->addWidget(rectConstraintWeightSpinBox_);
+   mainToolboxLayout->addItem(rectConstraintLayout);
+
+
    // Instantaneous update
    QHBoxLayout* updateNowLayout = new QHBoxLayout(toolBox_);
    updateNowLayout->setSpacing(5);
@@ -188,6 +214,44 @@ void MeshCut::initializePlugin()
    updateNowLayout->addWidget(nSolverIterationsSpinBox_);
    mainToolboxLayout->addItem(updateNowLayout);
 
+   // Line separator between tools
+   mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QFrame* lineSeparator1 = new QFrame();
+   lineSeparator1->setFrameShape(QFrame::HLine);
+   lineSeparator1->setFrameShadow(QFrame::Sunken);
+   mainToolboxLayout->addWidget(lineSeparator1);
+
+   ////////////////////////////////////////////////////////////////////////////////////////////////
+   /// Mesh generator
+   mesh_generator_ = new MeshGen();
+
+   // Tool title
+   QLabel* meshGenLabel = new QLabel("Mesh Generator");
+   meshGenLabel->setFont(titleLabelFont);
+   mainToolboxLayout->addWidget(meshGenLabel);
+
+   // Quad generation
+   QHBoxLayout* quadGenLayout = new QHBoxLayout(toolBox_);
+   quadGenLayout->setSpacing(5);
+   QPushButton* quadGenButton = new QPushButton("Generate quad mesh", toolBox_);
+   quadGenLayout->addWidget(quadGenButton);
+   quadGenWidthSpinBox_ = new QSpinBox(toolBox_);
+   quadGenWidthSpinBox_->setMinimum(1);
+   quadGenWidthSpinBox_->setMaximum(1000);
+   quadGenWidthSpinBox_->setSingleStep(1);
+   quadGenWidthSpinBox_->setValue(10);
+   quadGenLayout->addWidget(quadGenWidthSpinBox_);
+   quadGenHeightSpinBox_ = new QSpinBox(toolBox_);
+   quadGenHeightSpinBox_->setMinimum(1);
+   quadGenHeightSpinBox_->setMaximum(1000);
+   quadGenHeightSpinBox_->setSingleStep(1);
+   quadGenHeightSpinBox_->setValue(10);
+   quadGenLayout->addWidget(quadGenHeightSpinBox_);
+   mainToolboxLayout->addItem(quadGenLayout);
+
+   // Tesselate checkbox
+   tesselateQuadCheckBox_ = new QCheckBox("Tesselate", toolBox_);
+   mainToolboxLayout->addWidget(tesselateQuadCheckBox_);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
@@ -197,6 +261,8 @@ void MeshCut::initializePlugin()
    connect(selectButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
+//   connect(attachButton, SIGNAL(clicked()), this, SLOT(slotAttachSelected()));
+   connect(splitVertexButton, SIGNAL(clicked()), this, SLOT(slotSplitVertex()));
 
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
    connect(fixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
@@ -212,7 +278,12 @@ void MeshCut::initializePlugin()
    connect(bendingConstraintMinSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(bendingConstraintMaxSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(bendingConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(rectConstraintCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(rectConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(updateButton, SIGNAL(clicked()), this, SLOT(slotUpdateMesh()));
+
+   connect(quadGenButton, SIGNAL(clicked()), this, SLOT(slotQuadGen()));
+   /// End connect signals->slots
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
    emit addToolbox(tr("MeshCut"), toolBox_, toolboxIcon);
@@ -706,7 +777,8 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            areaConstraintWeightSpinBox_->value(),
                                            bendingConstraintMinSpinBox_->value(),
                                            bendingConstraintMaxSpinBox_->value(),
-                                           bendingConstraintWeightSpinBox_->value());
+                                           bendingConstraintWeightSpinBox_->value(),
+                                           rectConstraintWeightSpinBox_->value());
 
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
@@ -734,7 +806,8 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            areaConstraintWeightSpinBox_->value(),
                                            bendingConstraintMinSpinBox_->value(),
                                            bendingConstraintMaxSpinBox_->value(),
-                                           bendingConstraintWeightSpinBox_->value());
+                                           bendingConstraintWeightSpinBox_->value(),
+                                           rectConstraintWeightSpinBox_->value());
 
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
@@ -774,7 +847,7 @@ void MeshCut::slotCutSelectedEdges() {
          size_t n_cuts(0);
          TriMesh::EdgeIter e_it, e_end(mesh.edges_end());
          for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
-            if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh)) {
+            if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh, !independantCutsCheckBox_->isChecked())) {
                mesh.status(*e_it).set_selected(false);
                // Cut and count
                ++n_cuts;
@@ -786,14 +859,13 @@ void MeshCut::slotCutSelectedEdges() {
          emit updateView();
          emit createBackup(o_it->id(), "Selected edges cut", UPDATE_TOPOLOGY);
       } else if (o_it->dataType(DATA_POLY_MESH)) {
-         emit log(LOGWARN, "No support for cutting polymeshes yet...");
          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
          // Iterate over all edges
          size_t n_cuts(0);
          PolyMesh::EdgeIter e_it, e_end(mesh.edges_end());
          for (e_it = mesh.edges_begin(); e_it != e_end; ++e_it) {
-            if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh)) {
+            if (mesh.status(*e_it).selected() && cutting_tools_->cutPrimitive(*e_it, mesh, !independantCutsCheckBox_->isChecked())) {
                mesh.status(*e_it).set_selected(false);
                ++n_cuts;
             }
@@ -807,7 +879,114 @@ void MeshCut::slotCutSelectedEdges() {
    }
 }
 
-/** Toggle the use of shape tools
+/** \brief Attach selected vertices together
+ *
+ */
+void MeshCut::slotAttachSelected() {
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::ALL_OBJECTS);
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+
+         // Get both vertices
+         bool found = false;
+         TriMesh::VertexHandle vh0, vh1;
+         TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               if (found) {
+                  vh0 = *v_it;
+                  found = true;
+               } else {
+                  vh1 = *v_it;
+                  found = false;
+                  break;
+               }
+            }
+         }
+
+         // And attach
+         if (!found && vh0.idx() != vh1.idx()) {
+            cutting_tools_->attachVertices(vh0, vh1, mesh);
+         }
+         mesh.status(vh0).set_selected(false);
+         mesh.status(vh1).set_selected(false);
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
+
+         // Get both vertices
+         bool found = false;
+         PolyMesh::VertexHandle vh0, vh1;
+         PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               if (found) {
+                  vh0 = *v_it;
+                  found = true;
+               } else {
+                  vh1 = *v_it;
+                  found = false;
+                  break;
+               }
+            }
+         }
+
+         // And attach
+         if (!found && vh0.idx() != vh1.idx()) {
+            cutting_tools_->attachVertices(vh0, vh1, mesh);
+         }
+         mesh.status(vh0).set_selected(false);
+         mesh.status(vh1).set_selected(false);
+      }
+   }
+}
+
+/** \brief Split all selected vertices
+ *
+ * Every selected vertex is split if it is adjacent to two cuts.
+ */
+void MeshCut::slotSplitVertex() {
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::ALL_OBJECTS);
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+
+         size_t n_splits(0);
+         TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it!=v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               mesh.status(*v_it).set_selected(false);
+               cutting_tools_->splitVertex(*v_it, mesh);
+               ++n_splits;
+            }
+         }
+
+         emit log(LOGOUT, "Split " + QString::number(n_splits) + " TriMesh vertices");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Selected vertices split", UPDATE_TOPOLOGY);
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
+
+         size_t n_splits(0);
+         PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
+         for (v_it = mesh.vertices_begin(); v_it!=v_end; ++v_it) {
+            if (mesh.status(*v_it).selected()) {
+               mesh.status(*v_it).set_selected(false);
+               cutting_tools_->splitVertex(*v_it, mesh);
+               ++n_splits;
+            }
+         }
+
+         emit log(LOGOUT, "Split " + QString::number(n_splits) + " PolyMesh vertices");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Selected vertices split", UPDATE_TOPOLOGY);
+      }
+   }
+}
+
+/** \brief Toggle the use of shape tools
  *
  */
 void MeshCut::slotUseShapeToolsCheckBoxToggled() {
@@ -877,11 +1056,33 @@ void MeshCut::slotConstraintCheckBoxToggled() {
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::TRIANGLE_STRAIN, triangleStrainCheckBox_->isChecked());
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::AREA, areaConstraintCheckBox_->isChecked());
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::BENDING, bendingConstraintCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::RECT, rectConstraintCheckBox_->isChecked());
    shape_tools_->flagUpdateNeeded();
 }
 
 void MeshCut::slotUpdateMesh() {
    updateMesh(true);
+}
+
+/** \brief Generate a new quad mesh and add it to the scene
+ *
+ */
+void MeshCut::slotQuadGen() {
+   int id = -1;
+   emit addEmptyObject(DATA_POLY_MESH, id);
+
+   PolyMeshObject* meshObject = 0;
+   PluginFunctions::getObject(id, meshObject);
+
+   if (meshObject) {
+      mesh_generator_->generateQuadRect(meshObject->mesh(), quadGenWidthSpinBox_->value(),
+                                        quadGenHeightSpinBox_->value(), tesselateQuadCheckBox_->isChecked());
+
+      emit log(LOGOUT, "Created quad mesh");
+      emit updatedObject(id, UPDATE_TOPOLOGY);
+      emit updateView();
+      emit createBackup(id, "Mesh create", UPDATE_TOPOLOGY);
+   }
 }
 
 

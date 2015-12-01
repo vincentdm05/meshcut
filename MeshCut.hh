@@ -8,6 +8,7 @@
 #include <OpenFlipper/BasePlugin/LoggingInterface.hh>
 #include <OpenFlipper/BasePlugin/PickingInterface.hh>
 #include <OpenFlipper/BasePlugin/BackupInterface.hh>
+#include <OpenFlipper/BasePlugin/LoadSaveInterface.hh>
 #include <OpenFlipper/common/Types.hh>
 #include <ObjectTypes/PolyMesh/PolyMesh.hh>
 #include <ObjectTypes/TriangleMesh/TriangleMesh.hh>
@@ -17,10 +18,11 @@
 #include <queue>
 #include <tuple>
 
-#include "ShapeTools.hh"
 #include "Cutting.hh"
+#include "ShapeTools.hh"
+#include "MeshGen.hh"
 
-class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface {
+class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface, LoadSaveInterface {
    Q_OBJECT
    Q_INTERFACES(BaseInterface)
    Q_INTERFACES(MouseInterface)
@@ -29,6 +31,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
    Q_INTERFACES(LoggingInterface)
    Q_INTERFACES(PickingInterface)
    Q_INTERFACES(BackupInterface)
+   Q_INTERFACES(LoadSaveInterface)
 
 #if QT_VERSION >= 0x050000
   Q_PLUGIN_METADATA(IID "org.OpenFlipper.Plugins.Plugin-MeshCut")
@@ -49,6 +52,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void addHiddenPickMode( const std::string& _mode );
       // BackupInterface
       void createBackup( int _objectid, QString _name, UpdateType _type = UPDATE_ALL );
+      // LoadSaveInterface
+      void addEmptyObject( DataType _type, int& _id );
 
    private slots:
       // BaseInterface
@@ -69,8 +74,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       /// Cutting tools slots
       // Cut mode selection
       void slotSelectionButtonClicked();
-      // Called when toolbox button is clicked
       void slotCutSelectedEdges();
+      void slotAttachSelected();
+      void slotSplitVertex();
 
       /// Shape tools slots
       void slotUseShapeToolsCheckBoxToggled();
@@ -78,6 +84,9 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotFlagUpdate();
       void slotConstraintCheckBoxToggled();
       void slotUpdateMesh();
+
+      /// Mesh generation slots
+      void slotQuadGen();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -102,32 +111,43 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QToolBar* toolBar_;
       bool mouseDown_;
 
+      /// Cutting tools
       QAction* edgeCutAction_;
       QWidget* toolBox_;
       QPushButton* selectButton_;
       QPushButton* drawButton_;
       QCheckBox* clampToEdgeCheckBox_;
       QCheckBox* directCutCheckBox_;
+      QCheckBox* independantCutsCheckBox_;
       size_t selectionButtonToggled_;
 
+      /// Shape tools
+      // Edge strain
       QCheckBox* edgeStrainCheckBox_;
       QDoubleSpinBox* edgeStrainWeightSpinBox_;
-
+      // Triangle strain
       QCheckBox* triangleStrainCheckBox_;
       QDoubleSpinBox* triangleStrainWeightSpinBox_;
-
+      // Area constraints
       QCheckBox* areaConstraintCheckBox_;
       QDoubleSpinBox* areaConstraintMinSpinBox_;
       QDoubleSpinBox* areaConstraintMaxSpinBox_;
       QDoubleSpinBox* areaConstraintWeightSpinBox_;
-
+      // Bending constraints
       QCheckBox* bendingConstraintCheckBox_;
       QDoubleSpinBox* bendingConstraintMinSpinBox_;
       QDoubleSpinBox* bendingConstraintMaxSpinBox_;
       QDoubleSpinBox* bendingConstraintWeightSpinBox_;
-
+      // Rectangle constraints
+      QCheckBox* rectConstraintCheckBox_;
+      QDoubleSpinBox* rectConstraintWeightSpinBox_;
+      // Solver
       QSpinBox* nSolverIterationsSpinBox_;
 
+      /// Mesh generator
+      QSpinBox* quadGenWidthSpinBox_;
+      QSpinBox* quadGenHeightSpinBox_;
+      QCheckBox* tesselateQuadCheckBox_;
 
       Cutting* cutting_tools_;
 
@@ -148,20 +168,25 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       bool use_shape_tools_;
       bool object_updated_;
 
+      MeshGen* mesh_generator_;
+
    public:
       MeshCut() :
          toolBar_(0), mouseDown_(false), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
-         clampToEdgeCheckBox_(0), directCutCheckBox_(0), selectionButtonToggled_(0),
+         clampToEdgeCheckBox_(0), directCutCheckBox_(0), independantCutsCheckBox_(0), selectionButtonToggled_(0),
          edgeStrainCheckBox_(), edgeStrainWeightSpinBox_(),
          triangleStrainCheckBox_(), triangleStrainWeightSpinBox_(),
          areaConstraintCheckBox_(), areaConstraintMinSpinBox_(), areaConstraintMaxSpinBox_(), areaConstraintWeightSpinBox_(),
          bendingConstraintCheckBox_(), bendingConstraintMinSpinBox_(), bendingConstraintMaxSpinBox_(), bendingConstraintWeightSpinBox_(),
+         rectConstraintCheckBox_(), rectConstraintWeightSpinBox_(),
          nSolverIterationsSpinBox_(),
+         quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), tesselateQuadCheckBox_(),
          cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),
-         shape_tools_(), use_shape_tools_(false), object_updated_(false) {}
-      ~MeshCut(){ delete cutting_tools_; delete shape_tools_; }
+         shape_tools_(), use_shape_tools_(false), object_updated_(false),
+         mesh_generator_() {}
+      ~MeshCut(){ delete cutting_tools_; delete shape_tools_; delete mesh_generator_; }
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }

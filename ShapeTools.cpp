@@ -62,30 +62,69 @@ void ShapeTools::setConstraints() {
       std::vector<int> v_ids;
       for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
       {
-          v_ids.clear();
-          for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
-              v_ids.push_back((*fv_it).idx());
+         v_ids.clear();
+         for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+            v_ids.push_back((*fv_it).idx());
 
-          auto c = ShapeOp::Constraint::shapeConstraintFactory("TriangleStrain", v_ids, triangleStrainWeight_, solver_->getPoints());
-          if (c) solver_->addConstraint(c);
+         auto c = ShapeOp::Constraint::shapeConstraintFactory("TriangleStrain", v_ids, triangleStrainWeight_, solver_->getPoints());
+         if (c) solver_->addConstraint(c);
       }
    }
 
    // Area constraint
-   if (areaConstraintActive_ && triMesh_) {
-      std::vector<int> v_ids;
-      for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
-      {
-          v_ids.clear();
-          for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
-              v_ids.push_back((*fv_it).idx());
+   if (areaConstraintActive_) {
+      if (triMesh_) {
+         std::vector<int> v_ids;
+         for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
+         {
+            v_ids.clear();
+            for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+               v_ids.push_back((*fv_it).idx());
 
-          auto c = std::make_shared<ShapeOp::AreaConstraint>(v_ids, areaConstraintWeight_, solver_->getPoints());
-          if (c) {
-             c->setRangeMin(areaMin_);
-             c->setRangeMax(areaMax_);
-             solver_->addConstraint(c);
-          }
+            auto c = std::make_shared<ShapeOp::AreaConstraint>(v_ids, areaConstraintWeight_, solver_->getPoints());
+            if (c) {
+               c->setRangeMin(areaMin_);
+               c->setRangeMax(areaMax_);
+               solver_->addConstraint(c);
+            }
+         }
+      } else {
+         std::vector<int> v_ids;
+         for (PolyMesh::FaceIter f_it = polyMesh_->faces_begin(); f_it != polyMesh_->faces_end(); ++f_it)
+         {
+            v_ids.clear();
+            size_t n_vertices = 0;
+            PolyMesh::FaceVertexIter fv_it = polyMesh_->fv_iter(*f_it);
+            int first_v_idx = (*fv_it).idx();
+            for (; fv_it; ++fv_it) {
+               v_ids.push_back((*fv_it).idx());
+               ++n_vertices;
+
+               if (n_vertices == 3) {
+                  n_vertices = 1;
+
+                  auto c = std::make_shared<ShapeOp::AreaConstraint>(v_ids, areaConstraintWeight_, solver_->getPoints());
+                  if (c) {
+                     c->setRangeMin(areaMin_);
+                     c->setRangeMax(areaMax_);
+                     solver_->addConstraint(c);
+                  }
+
+                  v_ids.clear();
+                  v_ids.push_back((*fv_it).idx());
+               }
+            }
+
+            if (n_vertices == 2) {
+               v_ids.push_back(first_v_idx);
+               auto c = std::make_shared<ShapeOp::AreaConstraint>(v_ids, areaConstraintWeight_, solver_->getPoints());
+               if (c) {
+                  c->setRangeMin(areaMin_);
+                  c->setRangeMax(areaMax_);
+                  solver_->addConstraint(c);
+               }
+            }
+         }
       }
    }
 
@@ -93,21 +132,33 @@ void ShapeTools::setConstraints() {
    if (bendingConstraintActive_ && triMesh_) {
       std::vector<int> v_ids;
       for (TriMesh::EdgeIter e_it = triMesh_->edges_begin(); e_it != triMesh_->edges_end(); ++e_it) {
-         if (!triMesh_->is_boundary(*e_it)) {
-            v_ids.clear();
+         v_ids.clear();
 
+         if (!triMesh_->is_boundary(*e_it)) {
             TriMesh::HalfedgeHandle heh = triMesh_->halfedge_handle(*e_it, 0);
             v_ids.push_back(triMesh_->from_vertex_handle(heh).idx());
             v_ids.push_back(triMesh_->to_vertex_handle(heh).idx());
             v_ids.push_back(triMesh_->from_vertex_handle(triMesh_->prev_halfedge_handle(heh)).idx());
             v_ids.push_back(triMesh_->to_vertex_handle(triMesh_->next_halfedge_handle(triMesh_->opposite_halfedge_handle(heh))).idx());
 
-            auto c = std::make_shared<ShapeOp::BendingConstraint>(v_ids, bendingConstraintWeight_, solver_->getPoints());
-            if (c) {
-               c->setRangeMin(bendingMin_);
-               c->setRangeMax(bendingMax_);
-               solver_->addConstraint(c);
+            auto c = std::make_shared<ShapeOp::BendingConstraint>(v_ids, bendingConstraintWeight_, solver_->getPoints(), bendingMin_, bendingMax_);
+            if (c) solver_->addConstraint(c);
+         }
+      }
+   }
+
+   // Rectangle constraint
+   if (rectConstraintActive_ && polyMesh_) {
+      std::vector<int> v_ids;
+      for (PolyMesh::FaceIter f_it = polyMesh_->faces_begin(); f_it != polyMesh_->faces_end(); ++f_it) {
+         v_ids.clear();
+         if (polyMesh_->valence(*f_it) == 4) {
+            for (PolyMesh::FaceVertexIter fv_it = polyMesh_->fv_iter(*f_it); fv_it; ++fv_it) {
+               v_ids.push_back(fv_it->idx());
             }
+
+            auto c = std::make_shared<ShapeOp::RectangleConstraint>(v_ids, rectConstraintWeight_, solver_->getPoints());
+            if (c) solver_->addConstraint(c);
          }
       }
    }

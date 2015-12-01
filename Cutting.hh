@@ -44,10 +44,6 @@ private:
    template<typename Vec3Type, typename MeshT>
    int closest_connected_vertex(int vidx_from, Vec3Type p_to, MeshT& mesh);
 
-   // Connect adjacent cuts
-   template<typename MeshT>
-   void connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh);
-
    // Find closest vertex to hit point on a face
    template<typename Vec3Type, typename MeshT>
    int closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh);
@@ -95,7 +91,15 @@ public:
 
    // Cut along a single edge
    template<typename MeshT>
-   bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh);
+   bool cutPrimitive(typename MeshT::EdgeHandle edge, MeshT &mesh, bool joinCuts = true);
+
+   // Connect adjacent cuts
+   template<typename MeshT>
+   void splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh);
+
+   // Merge two vertices
+   template<typename MeshT>
+   void attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh);
 
    /// Setters for mouse-recorded path
    void addPathPoint(PathPoint _point) {
@@ -487,11 +491,7 @@ void Cutting::selectMarkedEdges(MeshT& mesh) {
  * @return success state
  */
 template<typename MeshT>
-bool Cutting::cutPrimitive(typename MeshT::EdgeHandle edge, MeshT& mesh) {
-   static_assert((std::is_same<MeshT, TriMesh>::value ||
-                 std::is_same<MeshT, PolyMesh>::value),
-                 "cutPrimitive: expected either TriMesh or PolyMesh");
-
+bool Cutting::cutPrimitive(typename MeshT::EdgeHandle edge, MeshT& mesh, bool joinCuts) {
    // Already a hole there
    if (mesh.is_boundary(edge)) {
       return false;
@@ -541,8 +541,10 @@ bool Cutting::cutPrimitive(typename MeshT::EdgeHandle edge, MeshT& mesh) {
    mesh.set_boundary(heh_out);
 
    // If there are neighbouring cuts, connect them
-   connectCuts(vh_up, mesh);
-   connectCuts(vh_down, mesh);
+   if (joinCuts) {
+      splitVertex(vh_up, mesh);
+      splitVertex(vh_down, mesh);
+   }
 
    return true;
 }
@@ -631,11 +633,7 @@ int Cutting::closest_connected_vertex(int vidx_from, Vec3Type p_to, MeshT& mesh)
  * @param mesh The mesh
  */
 template<typename MeshT>
-void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
-   static_assert((std::is_same<MeshT, TriMesh>::value ||
-                 std::is_same<MeshT, PolyMesh>::value),
-                 "connectCuts: expected either TriMesh or PolyMesh");
-
+void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
    /// The new vertex will carry the left side edges
    const size_t max_cuts = 2;
    // Halfedges at cuts
@@ -684,6 +682,85 @@ void Cutting::connectCuts(typename MeshT::VertexHandle vh, MeshT& mesh) {
       mesh.set_halfedge_handle(vh, heh_cuts[1]);
       mesh.set_vertex_handle(heh_cuts[2], vh);
       // No need to rewire right side halfedges
+   }
+}
+
+/** \brief Merge two vertices into one
+ *
+ * Assuption: both vertices are on the same mesh and on the border of a cut.
+ *
+ *  Before:
+ *                x             x   Up
+ *                |           /
+ *      left      |>  cut  </     right
+ *      side      |       /      side
+ *                |     /
+ *                |   /
+ *     x----------x  x vh1
+ *            vh0 |   \
+ *                |     \
+ *                |       \
+ *                |         \
+ *                |           \
+ *                x             x   Down
+ *
+ *  After:
+ *                x          x   Up
+ *                |> cut  </
+ *      left      |      /     right
+ *      side      |    /      side
+ *                |  /
+ *                |/
+ *     x----------x vh0
+ *                |\
+ *                |  \
+ *                |    \
+ *                |      \
+ *                |> cut  <\
+ *                x          x   Down
+ *
+ * @param vh0 The first vertex handle
+ * @param vh1 The second vertex handle
+ * @param mesh The mesh
+ */
+template<typename MeshT>
+void Cutting::attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
+   // Test border assumption and record boundary halfedges
+   bool isOnBorderLeft, isOnBorderRight;
+   typename MeshT::HalfedgeHandle heh_border_left_up, heh_border_right_down;
+   isOnBorderLeft = isOnBorderRight = false;
+   typename MeshT::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh0);
+   for (; vih_it.is_valid(); ++vih_it) {
+      if (mesh.is_boundary(*vih_it)) {
+         heh_border_left_up = *vih_it;
+         isOnBorderLeft = true;
+      }
+   }
+   vih_it = mesh.vih_iter(vh1);
+   for (; vih_it.is_valid(); ++vih_it) {
+      if (mesh.is_boundary(*vih_it)) {
+         heh_border_right_down = *vih_it;
+         isOnBorderRight = true;
+      }
+   }
+
+   if (isOnBorderLeft && isOnBorderRight) {
+      typename MeshT::HalfedgeHandle heh_border_left_down = mesh.next_halfedge_handle(heh_border_left_up);
+      typename MeshT::HalfedgeHandle heh_border_right_up = mesh.next_halfedge_handle(heh_border_right_down);
+
+      // Rewire right side edges to left side vertex
+      typename MeshT::VertexIHalfedgeIter vih_it_right = mesh.vih_iter(vh1);
+      for (; vih_it_right.is_valid(); ++vih_it_right) {
+         mesh.set_vertex_handle(*vih_it_right, vh0);
+      }
+
+      // Connect borders
+      mesh.set_next_halfedge_handle(heh_border_left_up, heh_border_right_up);
+      mesh.set_next_halfedge_handle(heh_border_right_down, heh_border_left_down);
+
+      // Finally, remove right side vertex
+      mesh.set_halfedge_handle(vh1, typename MeshT::HalfedgeHandle());
+      mesh.delete_vertex(vh1);
    }
 }
 
