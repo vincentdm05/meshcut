@@ -263,8 +263,8 @@ void MeshCut::initializePlugin()
    mainToolboxLayout->addItem(triGenLayout);
 
    // Tessellation checkbox
-   hingeTessellationCheckBox_ = new QCheckBox("Hinge tessellation", toolBox_);
-   mainToolboxLayout->addWidget(hingeTessellationCheckBox_);
+   hingedTessellationCheckBox_ = new QCheckBox("Hinged tessellation", toolBox_);
+   mainToolboxLayout->addWidget(hingedTessellationCheckBox_);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
@@ -1093,7 +1093,7 @@ void MeshCut::slotQuadGen() {
 
    if (meshObject) {
       mesh_generator_->generateQuadRect(meshObject->mesh(), quadGenWidthSpinBox_->value(),
-                                        quadGenHeightSpinBox_->value(), hingeTessellationCheckBox_->isChecked());
+                                        quadGenHeightSpinBox_->value(), hingedTessellationCheckBox_->isChecked());
 
       emit log(LOGOUT, "Created quad mesh");
       emit updatedObject(id, UPDATE_TOPOLOGY);
@@ -1114,7 +1114,7 @@ void MeshCut::slotTriGen() {
 
    if (meshObject) {
       mesh_generator_->generateTriHex(meshObject->mesh(), triGenRadiusSpinBox_->value(),
-                                       hingeTessellationCheckBox_->isChecked());
+                                       hingedTessellationCheckBox_->isChecked());
 
       emit log(LOGOUT, "Created triangle mesh");
       emit updatedObject(id, UPDATE_TOPOLOGY);

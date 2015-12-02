@@ -152,7 +152,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Tri
       QSpinBox* triGenRadiusSpinBox_;
       // Tessellation
-      QCheckBox* hingeTessellationCheckBox_;
+      QCheckBox* hingedTessellationCheckBox_;
 
       Cutting* cutting_tools_;
 
@@ -185,7 +185,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          bendingConstraintCheckBox_(), bendingConstraintMinSpinBox_(), bendingConstraintMaxSpinBox_(), bendingConstraintWeightSpinBox_(),
          rectConstraintCheckBox_(), rectConstraintWeightSpinBox_(),
          nSolverIterationsSpinBox_(),
-         quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), triGenRadiusSpinBox_(), hingeTessellationCheckBox_(),
+         quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), triGenRadiusSpinBox_(), hingedTessellationCheckBox_(),
          cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),

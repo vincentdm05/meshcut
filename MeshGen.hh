@@ -10,10 +10,13 @@ class MeshGen
 {
 private:
    template<typename Vec3Type>
-   PolyMesh::Point vToP(Vec3Type _v);
+   PolyMesh::Point vecToP(Vec3Type _v);
 
    template<typename PType>
-   Eigen::Vector3d pToV(PType _p);
+   Eigen::Vector3d pToVec(PType _p);
+
+   template<typename MeshT>
+   Eigen::Vector3d vhToVec(typename MeshT::VertexHandle _h, MeshT* _m);
 
    Eigen::Vector3d zPlaneRot(double _angle, Eigen::Vector3d _p, Eigen::Vector3d _rot_center);
 
@@ -28,9 +31,13 @@ public:
 /// TEMPLATED FUNCTIONS DEFINITION
 
 template<typename Vec3Type>
-PolyMesh::Point MeshGen::vToP (Vec3Type _v) { return PolyMesh::Point(_v[0],_v[1],_v[2]); }
+PolyMesh::Point MeshGen::vecToP (Vec3Type _v) { return PolyMesh::Point(_v[0],_v[1],_v[2]); }
 
 template<typename PType>
-Eigen::Vector3d MeshGen::pToV (PType _p) { return Eigen::Vector3d(_p[0],_p[1],_p[2]); }
+Eigen::Vector3d MeshGen::pToVec (PType _p) { return Eigen::Vector3d(_p[0],_p[1],_p[2]); }
+
+template<typename MeshT>
+Eigen::Vector3d MeshGen::vhToVec(typename MeshT::VertexHandle _h, MeshT* _m)
+{ typename MeshT::Point p = _m->point(_h); return pToVec(p); }
 
 #endif // MESHGEN_HH

@@ -14,7 +14,7 @@ Eigen::Vector3d MeshGen::zPlaneRot(double _angle, Eigen::Vector3d _p, Eigen::Vec
          sin(a), cos(a), 0.0,
          0.0, 0.0, 1.0;
 
-   Eigen::Vector3d p = M * (_p-_rot_center) + _rot_center;
+   Eigen::Vector3d p = (M * (_p-_rot_center)) + _rot_center;
 
    return p;
 }
@@ -155,7 +155,7 @@ void MeshGen::generateQuadRect(PolyMesh* mesh, size_t _width, size_t _height, bo
 /** \brief Create a hexagon mesh of equilateral triangles with a given radius
  *
  * A radius of 0 yields a single triangle.
- * After that, #t(r) = 6*r^2
+ * After that, #tri(r) = 6*r^2
  *
  * @param mesh The empty mesh on which to add the triangles
  * @param _radius The radius of the hexagon, i.e. number of edges from the center to the border
@@ -166,13 +166,13 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
    bool t(_tessellate);
 
    Eigen::Vector3d unitv(1.0, 0.0, 0.0);
-   Eigen::Vector3d tri_center(0.0, 0.0, 0.0);
+   const Eigen::Vector3d tri_origin(0.0, 0.0, 0.0);
 
    if (r == 0) {
       std::vector<TriMesh::VertexHandle> triangle;
-      triangle.push_back(mesh->add_vertex(vToP(zPlaneRot(-M_PI/6.0, unitv, tri_center))));
-      triangle.push_back(mesh->add_vertex(vToP(zPlaneRot(M_PI/2.0, unitv, tri_center))));
-      triangle.push_back(mesh->add_vertex(vToP(zPlaneRot(7.0*M_PI/6.0, unitv, tri_center))));
+      triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(-M_PI/6.0, unitv, tri_origin))));
+      triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(M_PI/2.0, unitv, tri_origin))));
+      triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(7.0*M_PI/6.0, unitv, tri_origin))));
 
       mesh->add_face(triangle);
    } else {
@@ -182,33 +182,73 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
 
       std::vector<TriMesh::VertexHandle> triangle;
       std::vector<TriMesh::VertexHandle> border;
+      std::vector<TriMesh::VertexHandle> next_border;
       TriMesh::VertexHandle face_side[2];
 
       // Iterate over levels
       for (; level<r; ++level) {
          n_tris_at_level = 6 * (level+1)*(level+1);
+         if (level > 0) {
+            border = next_border;
+            next_border.clear();
+         }
+
+         size_t n_evens = 0;
+         size_t n_odds = 0;
 
          if (level == 0) {
-            face_side[0] = mesh->add_vertex(TriMesh::Point(0.0, 0.0, 0.0));
-            face_side[1] = mesh->add_vertex(vToP(unitv/r));
+            face_side[0] = mesh->add_vertex(vecToP(tri_origin));
+         } else {
+            face_side[0] = face_side[1];
+         }
+         face_side[1] = mesh->add_vertex(vecToP(vhToVec(face_side[0],mesh) + unitv/r));
 
-            // Iterate over triangles in a level
-            for (; tri_n_at_level<n_tris_at_level; ++tri_n_at_level) {
-               triangle.clear();
+         size_t tri_n_on_side = 0;
+         size_t n_tris_on_side = 2*(level+1) - 1;
 
-               triangle.push_back(face_side[0]);
-               triangle.push_back(face_side[1]);
-               if (tri_n_at_level == n_tris_at_level-1) {
-                  triangle.push_back(border[0]);
+         // Iterate over triangles in a level
+         for (; tri_n_at_level<n_tris_at_level; ++tri_n_at_level) {
+            triangle.clear();
+
+            bool odd = tri_n_on_side%2 == 0;
+
+            triangle.push_back(face_side[0]);
+            triangle.push_back(face_side[1]);
+            if (tri_n_at_level == n_tris_at_level-1) {
+               triangle.push_back(next_border[0]);
+            } else {
+               if (level == 0) {
+                  triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(M_PI/3.0, vhToVec(triangle.back(),mesh), tri_origin))));
                } else {
-                  triangle.push_back(mesh->add_vertex(vToP(zPlaneRot(M_PI/3.0, pToV(mesh->point(triangle.back())), tri_center))));
+                  if (odd) {  // Odd triangles on side
+                     triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(M_PI/3.0, vhToVec(triangle[1],mesh), vhToVec(triangle[0],mesh)))));
+                     ++n_odds;
+                  } else {    // Even triangles
+                     if (tri_n_at_level == n_tris_at_level-2) {
+                        triangle.push_back(border[0]);
+                     } else {
+                        triangle.push_back(border[++n_evens]);
+                     }
+                  }
                }
-
-               border.push_back(triangle[1]);
-               face_side[1] = triangle[2];
-
-               mesh->add_face(triangle);
             }
+
+            mesh->add_face(triangle);
+
+            if (level == 0) {
+               next_border.push_back(triangle[1]);
+               face_side[1] = triangle[2];
+            } else {
+               // In the even case, no border is recorded
+               if (odd) {
+                  next_border.push_back(triangle[1]);
+                  face_side[1] = triangle[2];
+               } else {
+                  face_side[0] = triangle[2];
+               }
+            }
+
+            tri_n_on_side = (tri_n_on_side + 1) % n_tris_on_side;
          }
       }
    }
