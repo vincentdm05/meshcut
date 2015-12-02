@@ -87,6 +87,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       /// Mesh generation slots
       void slotQuadGen();
+      void slotTriGen();
 
    public slots:
       QString version() { return QString("1.0"); }
@@ -145,9 +146,13 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       QSpinBox* nSolverIterationsSpinBox_;
 
       /// Mesh generator
+      // Quad
       QSpinBox* quadGenWidthSpinBox_;
       QSpinBox* quadGenHeightSpinBox_;
-      QCheckBox* tesselateQuadCheckBox_;
+      // Tri
+      QSpinBox* triGenRadiusSpinBox_;
+      // Tessellation
+      QCheckBox* hingeTessellationCheckBox_;
 
       Cutting* cutting_tools_;
 
@@ -180,7 +185,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          bendingConstraintCheckBox_(), bendingConstraintMinSpinBox_(), bendingConstraintMaxSpinBox_(), bendingConstraintWeightSpinBox_(),
          rectConstraintCheckBox_(), rectConstraintWeightSpinBox_(),
          nSolverIterationsSpinBox_(),
-         quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), tesselateQuadCheckBox_(),
+         quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), triGenRadiusSpinBox_(), hingeTessellationCheckBox_(),
          cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),

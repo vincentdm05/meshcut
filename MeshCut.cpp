@@ -249,9 +249,22 @@ void MeshCut::initializePlugin()
    quadGenLayout->addWidget(quadGenHeightSpinBox_);
    mainToolboxLayout->addItem(quadGenLayout);
 
-   // Tesselate checkbox
-   tesselateQuadCheckBox_ = new QCheckBox("Tesselate", toolBox_);
-   mainToolboxLayout->addWidget(tesselateQuadCheckBox_);
+   // Triangle generation
+   QHBoxLayout* triGenLayout = new QHBoxLayout(toolBox_);
+   triGenLayout->setSpacing(5);
+   QPushButton* triGenButton = new QPushButton("Generate triangle mesh", toolBox_);
+   triGenLayout->addWidget(triGenButton);
+   triGenRadiusSpinBox_ = new QSpinBox(toolBox_);
+   triGenRadiusSpinBox_->setMinimum(0);
+   triGenRadiusSpinBox_->setMaximum(10);
+   triGenRadiusSpinBox_->setSingleStep(1);
+   triGenRadiusSpinBox_->setValue(1);
+   triGenLayout->addWidget(triGenRadiusSpinBox_);
+   mainToolboxLayout->addItem(triGenLayout);
+
+   // Tessellation checkbox
+   hingeTessellationCheckBox_ = new QCheckBox("Hinge tessellation", toolBox_);
+   mainToolboxLayout->addWidget(hingeTessellationCheckBox_);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
@@ -283,6 +296,7 @@ void MeshCut::initializePlugin()
    connect(updateButton, SIGNAL(clicked()), this, SLOT(slotUpdateMesh()));
 
    connect(quadGenButton, SIGNAL(clicked()), this, SLOT(slotQuadGen()));
+   connect(triGenButton, SIGNAL(clicked()), this, SLOT(slotTriGen()));
    /// End connect signals->slots
 
    QIcon* toolboxIcon = new QIcon(OpenFlipper::Options::iconDirStr()+OpenFlipper::Options::dirSeparator()+"meshCut.png");
@@ -663,11 +677,11 @@ void MeshCut::mouseDraw(QMouseEvent* _event) {
          }
          cutting_tools_->addPathPoint(std::make_tuple(active_hit_point_, active_face_, active_edge_, active_vertex_));
 
-         // If real time cutting is selected, apply after two face-overs
-         if (directCutCheckBox_->isChecked() && cutting_tools_->faceOvers() > 2) {
-            /// TODO: real time cutting is hardcore
-            emit log(LOGWARN, "Real-time cutting is still under development.");
-         }
+//         // If real time cutting is selected, apply after two face-overs
+//         if (directCutCheckBox_->isChecked() && cutting_tools_->faceOvers() > 2) {
+//            /// TODO: real time cutting is hardcore
+//            emit log(LOGWARN, "Real-time cutting is still under development.");
+//         }
       }
       // The mouse got out of the mesh
       else if (!visible_path_.empty()) {
@@ -1060,6 +1074,9 @@ void MeshCut::slotConstraintCheckBoxToggled() {
    shape_tools_->flagUpdateNeeded();
 }
 
+/** \brief Trigger a mesh update
+ *
+ */
 void MeshCut::slotUpdateMesh() {
    updateMesh(true);
 }
@@ -1076,9 +1093,30 @@ void MeshCut::slotQuadGen() {
 
    if (meshObject) {
       mesh_generator_->generateQuadRect(meshObject->mesh(), quadGenWidthSpinBox_->value(),
-                                        quadGenHeightSpinBox_->value(), tesselateQuadCheckBox_->isChecked());
+                                        quadGenHeightSpinBox_->value(), hingeTessellationCheckBox_->isChecked());
 
       emit log(LOGOUT, "Created quad mesh");
+      emit updatedObject(id, UPDATE_TOPOLOGY);
+      emit updateView();
+      emit createBackup(id, "Mesh create", UPDATE_TOPOLOGY);
+   }
+}
+
+/** \brief Generate a new triangle mesh and add it to the scene
+ *
+ */
+void MeshCut::slotTriGen() {
+   int id = -1;
+   emit addEmptyObject(DATA_TRIANGLE_MESH, id);
+
+   TriMeshObject* meshObject = 0;
+   PluginFunctions::getObject(id, meshObject);
+
+   if (meshObject) {
+      mesh_generator_->generateTriHex(meshObject->mesh(), triGenRadiusSpinBox_->value(),
+                                       hingeTessellationCheckBox_->isChecked());
+
+      emit log(LOGOUT, "Created triangle mesh");
       emit updatedObject(id, UPDATE_TOPOLOGY);
       emit updateView();
       emit createBackup(id, "Mesh create", UPDATE_TOPOLOGY);
