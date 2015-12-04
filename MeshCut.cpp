@@ -53,9 +53,9 @@ void MeshCut::initializePlugin()
    cutButton->setToolTip("Cut selected edges.");
    mainToolboxLayout->addWidget(cutButton);
 
-//   QPushButton* attachButton = new QPushButton("&Attach selected", toolBox_);
-//   attachButton->setToolTip("Attach selected vertices together");
-//   mainToolboxLayout->addWidget(attachButton);
+   QPushButton* attachButton = new QPushButton("&Attach selected", toolBox_);
+   attachButton->setToolTip("Attach selected vertices together");
+   mainToolboxLayout->addWidget(attachButton);
 
    QPushButton* splitVertexButton = new QPushButton("&Split selected vertices", toolBox_);
    splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
@@ -260,6 +260,10 @@ void MeshCut::initializePlugin()
    meshGenLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(meshGenLabel);
 
+   // Tessellation checkbox
+   hingedTessellationCheckBox_ = new QCheckBox("Hinged tessellation", toolBox_);
+   mainToolboxLayout->addWidget(hingedTessellationCheckBox_);
+
    // Quad generation
    QHBoxLayout* quadGenLayout = new QHBoxLayout(toolBox_);
    quadGenLayout->setSpacing(5);
@@ -292,10 +296,6 @@ void MeshCut::initializePlugin()
    triGenLayout->addWidget(triGenRadiusSpinBox_);
    mainToolboxLayout->addItem(triGenLayout);
 
-   // Tessellation checkbox
-   hingedTessellationCheckBox_ = new QCheckBox("Hinged tessellation", toolBox_);
-   mainToolboxLayout->addWidget(hingedTessellationCheckBox_);
-
    ////////////////////////////////////////////////////////////////////////////////////////////////
    // Spacer at the end
    mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
@@ -304,7 +304,7 @@ void MeshCut::initializePlugin()
    connect(selectButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
-//   connect(attachButton, SIGNAL(clicked()), this, SLOT(slotAttachSelected()));
+   connect(attachButton, SIGNAL(clicked()), this, SLOT(slotAttachSelected()));
    connect(splitVertexButton, SIGNAL(clicked()), this, SLOT(slotSplitVertex()));
 
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
@@ -954,13 +954,14 @@ void MeshCut::slotAttachSelected() {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
 
+         /// TODO: find closest pairs
          // Get both vertices
          bool found = false;
          TriMesh::VertexHandle vh0, vh1;
          TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
             if (mesh.status(*v_it).selected()) {
-               if (found) {
+               if (!found) {
                   vh0 = *v_it;
                   found = true;
                } else {
@@ -972,11 +973,18 @@ void MeshCut::slotAttachSelected() {
          }
 
          // And attach
-         if (!found && vh0.idx() != vh1.idx()) {
+         if (!found && vh0 != vh1) {
             cutting_tools_->attachVertices(vh0, vh1, mesh);
          }
          mesh.status(vh0).set_selected(false);
          mesh.status(vh1).set_selected(false);
+
+         mesh.update_normals();
+
+         emit log(LOGOUT, "Attached TriMesh vertices");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Attached vertices", UPDATE_TOPOLOGY);
       } else if (o_it->dataType(DATA_POLY_MESH)) {
          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
@@ -986,7 +994,7 @@ void MeshCut::slotAttachSelected() {
          PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
             if (mesh.status(*v_it).selected()) {
-               if (found) {
+               if (!found) {
                   vh0 = *v_it;
                   found = true;
                } else {
@@ -1003,6 +1011,13 @@ void MeshCut::slotAttachSelected() {
          }
          mesh.status(vh0).set_selected(false);
          mesh.status(vh1).set_selected(false);
+
+         mesh.update_normals();
+
+         emit log(LOGOUT, "Attached Polymesh vertices");
+         emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
+         emit updateView();
+         emit createBackup(o_it->id(), "Attached vertices", UPDATE_TOPOLOGY);
       }
    }
 }

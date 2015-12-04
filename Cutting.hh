@@ -731,8 +731,8 @@ template<typename MeshT>
 void Cutting::attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
    // Test border assumption and record boundary halfedges
    bool isOnBorderLeft, isOnBorderRight;
-   typename MeshT::HalfedgeHandle heh_border_left_up, heh_border_right_down;
    isOnBorderLeft = isOnBorderRight = false;
+   typename MeshT::HalfedgeHandle heh_border_left_up, heh_border_right_down;
    typename MeshT::VertexIHalfedgeIter vih_it = mesh.vih_iter(vh0);
    for (; vih_it.is_valid(); ++vih_it) {
       if (mesh.is_boundary(*vih_it)) {
