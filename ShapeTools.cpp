@@ -163,6 +163,107 @@ void ShapeTools::setConstraints() {
       }
    }
 
+   // Angle constraint
+   if (angleConstraintActive_) {
+      if (angleMin_ == 0) angleMin_ = 3e-3;
+
+      if (triMesh_) {
+         std::vector<int> v_ids;
+         TriMesh::VertexIter v_it, v_end(triMesh_->vertices_end());
+         for (v_it = triMesh_->vertices_begin(); v_it != v_end; ++v_it) {
+            v_ids.clear();
+
+            TriMesh::VertexIHalfedgeIter vih_it = triMesh_->vih_iter(*v_it);
+            for (; vih_it; ++vih_it) {
+               if (triMesh_->is_boundary(*vih_it)) {
+                  TriMesh::VertexHandle vh0, vh1, vh2;
+                  vh0 = triMesh_->to_vertex_handle(*vih_it);
+                  vh1 = triMesh_->to_vertex_handle(triMesh_->next_halfedge_handle(*vih_it));
+                  vh2 = triMesh_->from_vertex_handle(*vih_it);
+
+                  TriMesh::Point p1, p2;
+                  p1 = triMesh_->point(vh1) - triMesh_->point(vh0);
+                  p2 = triMesh_->point(vh2) - triMesh_->point(vh0);
+                  Eigen::Vector3d v1(p1[0], p1[1], p1[2]);
+                  Eigen::Vector3d v2(p2[0], p2[1], p2[2]);
+
+                  TriMesh::Normal normal = triMesh_->normal(vh0);
+                  Eigen::Vector3d n0(normal[0], normal[1], normal[2]);
+                  normal = triMesh_->normal(vh1);
+                  Eigen::Vector3d n1(normal[0], normal[1], normal[2]);
+                  normal = triMesh_->normal(vh2);
+                  Eigen::Vector3d n2(normal[0], normal[1], normal[2]);
+
+                  Eigen::Vector3d n = n0 + n1 + n2;
+                  if (n.norm() == 0) n = n0;
+                  n.normalize();
+
+                  double dot = v1.dot(v2);
+                  double det = n.dot(v1.cross(v2));
+
+                  double signedAngle = atan2(det, dot);
+
+                  if (signedAngle >= 0) {
+                     v_ids.push_back(vh0.idx());
+                     v_ids.push_back(vh1.idx());
+                     v_ids.push_back(vh2.idx());
+
+                     auto c = std::make_shared<ShapeOp::AngleConstraint>(v_ids, angleConstraintWeight_, solver_->getPoints(), angleMin_, angleMax_);
+                     if (c) solver_->addConstraint(c);
+                  }
+               }
+            }
+         }
+      } else {
+         std::vector<int> v_ids;
+         PolyMesh::VertexIter v_it, v_end(polyMesh_->vertices_end());
+         for (v_it = polyMesh_->vertices_begin(); v_it != v_end; ++v_it) {
+            v_ids.clear();
+
+            PolyMesh::VertexIHalfedgeIter vih_it = polyMesh_->vih_iter(*v_it);
+            for (; vih_it; ++vih_it) {
+               if (polyMesh_->is_boundary(*vih_it)) {
+                  PolyMesh::VertexHandle vh0, vh1, vh2;
+                  vh0 = polyMesh_->to_vertex_handle(*vih_it);
+                  vh1 = polyMesh_->to_vertex_handle(polyMesh_->next_halfedge_handle(*vih_it));
+                  vh2 = polyMesh_->from_vertex_handle(*vih_it);
+
+                  PolyMesh::Point p1, p2;
+                  p1 = polyMesh_->point(vh1) - polyMesh_->point(vh0);
+                  p2 = polyMesh_->point(vh2) - polyMesh_->point(vh0);
+                  Eigen::Vector3d v1(p1[0], p1[1], p1[2]);
+                  Eigen::Vector3d v2(p2[0], p2[1], p2[2]);
+
+                  PolyMesh::Normal normal = polyMesh_->normal(vh0);
+                  Eigen::Vector3d n0(normal[0], normal[1], normal[2]);
+                  normal = polyMesh_->normal(vh1);
+                  Eigen::Vector3d n1(normal[0], normal[1], normal[2]);
+                  normal = polyMesh_->normal(vh2);
+                  Eigen::Vector3d n2(normal[0], normal[1], normal[2]);
+
+                  Eigen::Vector3d n = n0 + n1 + n2;
+                  if (n.norm() == 0) n = n0;
+                  n.normalize();
+
+                  double dot = v1.dot(v2);
+                  double det = n.dot(v1.cross(v2));
+
+                  double signedAngle = atan2(det, dot);
+
+                  if (signedAngle >= 0 && signedAngle <= angleMax_) {
+                     v_ids.push_back(vh0.idx());
+                     v_ids.push_back(vh1.idx());
+                     v_ids.push_back(vh2.idx());
+
+                     auto c = std::make_shared<ShapeOp::AngleConstraint>(v_ids, angleConstraintWeight_, solver_->getPoints(), angleMin_, angleMax_);
+                     if (c) solver_->addConstraint(c);
+                  }
+               }
+            }
+         }
+      }
+   }
+
 }
 
 /**

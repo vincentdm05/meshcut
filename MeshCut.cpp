@@ -200,6 +200,31 @@ void MeshCut::initializePlugin()
    rectConstraintLayout->addWidget(rectConstraintWeightSpinBox_);
    mainToolboxLayout->addItem(rectConstraintLayout);
 
+   // Angle constraint
+   QHBoxLayout* angleConstraintLayout = new QHBoxLayout(toolBox_);
+   angleConstraintLayout->setSpacing(5);
+   angleConstraintCheckBox_ = new QCheckBox("Angle", toolBox_);
+   angleConstraintLayout->addWidget(angleConstraintCheckBox_);
+   angleConstraintMinSpinBox_ = new QSpinBox(toolBox_);
+   angleConstraintMinSpinBox_->setMinimum(0);
+   angleConstraintMinSpinBox_->setMaximum(180);
+   angleConstraintMinSpinBox_->setSingleStep(1);
+   angleConstraintMinSpinBox_->setValue(0);
+   angleConstraintLayout->addWidget(angleConstraintMinSpinBox_);
+   angleConstraintMaxSpinBox_ = new QSpinBox(toolBox_);
+   angleConstraintMaxSpinBox_->setMinimum(0);
+   angleConstraintMaxSpinBox_->setMaximum(180);
+   angleConstraintMaxSpinBox_->setSingleStep(1);
+   angleConstraintMaxSpinBox_->setValue(60);
+   angleConstraintLayout->addWidget(angleConstraintMaxSpinBox_);
+   angleConstraintWeightSpinBox_ = new QDoubleSpinBox(toolBox_);
+   angleConstraintWeightSpinBox_->setMinimum(WEIGHT_MIN);
+   angleConstraintWeightSpinBox_->setMaximum(WEIGHT_MAX);
+   angleConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
+   angleConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
+   angleConstraintLayout->addWidget(angleConstraintWeightSpinBox_);
+   mainToolboxLayout->addItem(angleConstraintLayout);
+
 
    // Instantaneous update
    QHBoxLayout* updateNowLayout = new QHBoxLayout(toolBox_);
@@ -293,6 +318,10 @@ void MeshCut::initializePlugin()
    connect(bendingConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(rectConstraintCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
    connect(rectConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
+   connect(angleConstraintCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
+   connect(angleConstraintMinSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(angleConstraintMaxSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
+   connect(angleConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(updateButton, SIGNAL(clicked()), this, SLOT(slotUpdateMesh()));
 
    connect(quadGenButton, SIGNAL(clicked()), this, SLOT(slotQuadGen()));
@@ -799,7 +828,10 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            bendingConstraintMinSpinBox_->value(),
                                            bendingConstraintMaxSpinBox_->value(),
                                            bendingConstraintWeightSpinBox_->value(),
-                                           rectConstraintWeightSpinBox_->value());
+                                           rectConstraintWeightSpinBox_->value(),
+                                           angleConstraintMinSpinBox_->value()*DEG2RAD,
+                                           angleConstraintMaxSpinBox_->value()*DEG2RAD,
+                                           angleConstraintWeightSpinBox_->value());
 
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
@@ -828,7 +860,10 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            bendingConstraintMinSpinBox_->value(),
                                            bendingConstraintMaxSpinBox_->value(),
                                            bendingConstraintWeightSpinBox_->value(),
-                                           rectConstraintWeightSpinBox_->value());
+                                           rectConstraintWeightSpinBox_->value(),
+                                           angleConstraintMinSpinBox_->value()*DEG2RAD,
+                                           angleConstraintMaxSpinBox_->value()*DEG2RAD,
+                                           angleConstraintWeightSpinBox_->value());
 
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
@@ -1086,6 +1121,7 @@ void MeshCut::slotConstraintCheckBoxToggled() {
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::AREA, areaConstraintCheckBox_->isChecked());
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::BENDING, bendingConstraintCheckBox_->isChecked());
    shape_tools_->toggleConstraint(ShapeTools::ConstraintType::RECT, rectConstraintCheckBox_->isChecked());
+   shape_tools_->toggleConstraint(ShapeTools::ConstraintType::ANGLE, angleConstraintCheckBox_->isChecked());
    shape_tools_->flagUpdateNeeded();
 }
 

@@ -187,32 +187,32 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
 
       mesh->add_face(triangle);
    } else {
-      size_t level = 0;
-      size_t tri_n_at_level = 0;
-      size_t n_tris_at_level = 6;
+      size_t layer = 0;
+      size_t tri_n_on_layer = 0;
+      size_t n_tris_on_layer = 6;
 
       std::vector<TriMesh::VertexHandle> triangle;
       std::vector<TriMesh::VertexHandle> border;
       std::vector<TriMesh::VertexHandle> next_border;
       TriMesh::VertexHandle face_side[2];
 
-      // Iterate over levels
-      for (; level<r; ++level) {
-         // This is the number of total triangles at this level
-         n_tris_at_level = 6 * (level+1)*(level+1);
+      // Iterate over layers
+      for (; layer<r; ++layer) {
+         // This is the number of total triangles at this layer
+         n_tris_on_layer = 6 * (layer+1)*(layer+1);
 
          // Set border for this iteration
-         if (level > 0) {
+         if (layer > 0) {
             border = next_border;
             next_border.clear();
          }
 
-         // We keep track of the number of even and odd triangles at a level
-         // Note that this count considers parity on a 'side', not on the complete level
+         // We keep track of the number of even and odd triangles at a layer
+         // Note that this count considers parity on a 'side', not on the complete layer
          size_t n_evens_on_side = 0;
          size_t n_odds_on_side = 0;
 
-         if (level == 0) {
+         if (layer == 0) {
             face_side[0] = mesh->add_vertex(vecToP(tri_origin));
          } else {
             face_side[0] = border[0];
@@ -221,23 +221,23 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
 
          // Keep track of numbers of triangles on a side
          size_t tri_n_on_side = 0;
-         size_t n_tris_on_side = 2*(level+1) - 1;
+         size_t n_tris_on_side = 2*(layer+1) - 1;
 
          bool odd_side = true;
          size_t t_border_access = 1;
 
-         // Iterate over triangles in a level
-         for (; tri_n_at_level<n_tris_at_level; ++tri_n_at_level) {
+         // Iterate over triangles in a layer
+         for (; tri_n_on_layer<n_tris_on_layer; ++tri_n_on_layer) {
             triangle.clear();
 
             // Caution: parity is not based on the index but the vertex number (vertex at idx 0 is number 1, which is odd)
             bool odd_on_side = tri_n_on_side%2 == 0;
-            bool odd_on_level = tri_n_at_level%2 == 0;
+            bool odd_on_layer = tri_n_on_layer%2 == 0;
 
             // First two vertices are connected to the previous triangle, or alternating when tessellation is on
             if (t) {
-               if (odd_on_level) {
-                  if (tri_n_at_level == 0) {
+               if (odd_on_layer) {
+                  if (tri_n_on_layer == 0) {
                      triangle.push_back(face_side[0]);
                   } else {
                      if (odd_on_side) {
@@ -257,11 +257,11 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
             }
 
             // Third vertex is either a new one or connected to the previous layer (except last one)
-            if (tri_n_at_level == n_tris_at_level-1) {
-               // Last triangle on a level connects to first one
+            if (tri_n_on_layer == n_tris_on_layer-1) {
+               // Last triangle on a layer connects to first one
                triangle.push_back(next_border[0]);
             } else {
-               if (level == 0) {
+               if (layer == 0) {
                   triangle.push_back(mesh->add_vertex(vecToP(zPlaneRot(M_PI/3.0, vhToVec(triangle.back(),mesh), tri_origin))));
                } else {
                   if (odd_on_side) {  // Odd triangles on side, starting at 'bend' with triangle #1
@@ -270,7 +270,7 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
                   } else {    // Even triangles on side
                      ++n_evens_on_side;
 
-                     if (tri_n_at_level == n_tris_at_level-2) {   // One before last is connected to border beginning
+                     if (tri_n_on_layer == n_tris_on_layer-2) {   // One before last is connected to border beginning
                         if (t) {
                            triangle.push_back(mesh->add_vertex(vecToP(vhToVec(border[0],mesh))));
                         } else {
@@ -278,7 +278,7 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
                         }
                      } else {
                         if (t) {
-                           if (odd_on_level) {
+                           if (odd_on_layer) {
                               triangle.push_back(mesh->add_vertex(vecToP(vhToVec(border[t_border_access++],mesh))));
                            } else {
                               triangle.push_back(border[t_border_access++]);
@@ -293,14 +293,12 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
 
             mesh->add_face(triangle);
 
-//            if (tri_n_at_level == n_tris_at_level/1.5 && level == 2) break;
-
-            // Prepare for next triangle and next level
-            if (level == 0) {
+            // Prepare for next triangle and next layer
+            if (layer == 0) {
                next_border.push_back(triangle[1]);
 
                if (t) {
-                  if (odd_on_level){
+                  if (odd_on_layer){
                      next_border.push_back(triangle[2]);
                      face_side[0] = triangle[0];
                   }
@@ -311,25 +309,24 @@ void MeshGen::generateTriHex(TriMesh *mesh, size_t _radius, bool _tessellate) {
                if (odd_on_side) {
                   next_border.push_back(triangle[1]);
                   // When tessellating, we need to keep track of both top vertices on the border
-                  if (t && odd_on_level) next_border.push_back(triangle[2]);
+                  if (t && odd_on_layer) next_border.push_back(triangle[2]);
 
                   face_side[0] = triangle[0];
                   face_side[1] = triangle[2];
                } else {
-                  if (t && odd_on_level) next_border.push_back(triangle[1]);
+                  if (t && odd_on_layer) next_border.push_back(triangle[1]);
 
                   face_side[0] = triangle[2];
                   face_side[1] = triangle[1];
                }
             }
 
-            // The number of triangles on a side does not exceed twice the number of levels they are at
+            // The number of triangles on a side does not exceed twice the number of layers they are at
             tri_n_on_side = (tri_n_on_side + 1) % n_tris_on_side;
 
-            if (odd_side && odd_on_side && tri_n_on_side != 0 && tri_n_on_side != 1) ++t_border_access;
+            /// TODO: instead of doing that, don't register the underlying border element in the layer before
+            if (odd_on_layer && odd_on_side && tri_n_on_side != 0 && tri_n_on_side != 1) ++t_border_access;
             if (tri_n_on_side == 0) odd_side = !odd_side;
-//            if (tri_n_on_side != 0 && tri_n_on_side != 1) ++t_border_access;
-//            if (odd_side && !odd_on_side && tri_n_on_side != 0) ++t_border_access;
          }
       }
    }

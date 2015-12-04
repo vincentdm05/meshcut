@@ -8,15 +8,22 @@
 #include <Constraint.h>
 
 #define WEIGHT_MIN 0.0
-#define WEIGHT_MAX 1.0
+#define WEIGHT_MAX 10.0
 #define WEIGHT_STEP 0.01
 #define WEIGHT_DEFAULT 0.1
-#define WEIGHT_HANDLE 0.5
+#define WEIGHT_HANDLE 1.0
 
 #define RANGE_MIN 0.0
 #define RANGE_MAX 2.0
 #define RANGE_STEP 0.1
 #define RANGE_DEFAULT 1.0
+
+#define ANGLE_MIN 0.0
+#define ANGLE_MAX M_PI
+#define ANGLE_STEP M_PI/180.0
+#define ANGLE_DEFAULT M_PI/3.0
+#define DEG2RAD M_PI/180.0
+#define RAD2DEG 180.0/M_PI
 
 class ShapeTools {
 private:
@@ -61,6 +68,12 @@ private:
    double rectConstraintWeight_;
    bool rectConstraintActive_;
 
+   // Angle
+   double angleConstraintWeight_;
+   double angleMin_;
+   double angleMax_;
+   bool angleConstraintActive_;
+
    void setConstraints();
    void moveHandles();
 
@@ -72,7 +85,8 @@ public:
       triangleStrainWeight_(WEIGHT_DEFAULT), triangleStrainActive_(false),
       areaConstraintWeight_(WEIGHT_DEFAULT), areaMin_(RANGE_DEFAULT), areaMax_(RANGE_DEFAULT), areaConstraintActive_(false),
       bendingConstraintWeight_(WEIGHT_DEFAULT), bendingMin_(RANGE_DEFAULT), bendingMax_(RANGE_DEFAULT), bendingConstraintActive_(false),
-      rectConstraintWeight_(WEIGHT_DEFAULT), rectConstraintActive_(false) {
+      rectConstraintWeight_(WEIGHT_DEFAULT), rectConstraintActive_(false),
+      angleConstraintWeight_(WEIGHT_DEFAULT), angleMin_(ANGLE_MIN), angleMax_(ANGLE_DEFAULT), angleConstraintActive_(false) {
       solver_iterations_ = 50;
    }
    ~ShapeTools() { if (solver_ != NULL) delete solver_; }
@@ -99,7 +113,8 @@ public:
    void setWeightsAndRanges(double _edgeStrainWeight, double _triangleStrainWeight,
                             double _areaMin, double _areaMax, double _areaWeight,
                             double _bendingMin, double _bendingMax, double _bendingWeight,
-                            double _rectWeight) {
+                            double _rectWeight,
+                            double _angleMin, double _angleMax, double _angleWeight) {
       edgeStrainWeight_ = _edgeStrainWeight;
       triangleStrainWeight_ = _triangleStrainWeight;
       areaMin_ = _areaMin;
@@ -109,10 +124,13 @@ public:
       bendingMax_ = _bendingMax;
       bendingConstraintWeight_ = _bendingWeight;
       rectConstraintWeight_ = _rectWeight;
+      angleMin_ = _angleMin;
+      angleMax_ = _angleMax;
+      angleConstraintWeight_ = _angleWeight;
    }
 
    // Activation of constraints
-   enum ConstraintType { EDGE_STRAIN, TRIANGLE_STRAIN, AREA, BENDING, RECT };
+   enum ConstraintType { EDGE_STRAIN, TRIANGLE_STRAIN, AREA, BENDING, RECT, ANGLE };
    void toggleConstraint(int _constraintType, bool _active) {
       switch (_constraintType) {
       case EDGE_STRAIN:
@@ -129,6 +147,9 @@ public:
          break;
       case RECT:
          rectConstraintActive_ = _active;
+         break;
+      case ANGLE:
+         angleConstraintActive_ = _active;
          break;
       default:
          break;

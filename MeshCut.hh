@@ -142,6 +142,11 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       // Rectangle constraints
       QCheckBox* rectConstraintCheckBox_;
       QDoubleSpinBox* rectConstraintWeightSpinBox_;
+      // Angle constraints
+      QCheckBox* angleConstraintCheckBox_;
+      QSpinBox* angleConstraintMinSpinBox_;
+      QSpinBox* angleConstraintMaxSpinBox_;
+      QDoubleSpinBox* angleConstraintWeightSpinBox_;
       // Solver
       QSpinBox* nSolverIterationsSpinBox_;
 
@@ -184,6 +189,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          areaConstraintCheckBox_(), areaConstraintMinSpinBox_(), areaConstraintMaxSpinBox_(), areaConstraintWeightSpinBox_(),
          bendingConstraintCheckBox_(), bendingConstraintMinSpinBox_(), bendingConstraintMaxSpinBox_(), bendingConstraintWeightSpinBox_(),
          rectConstraintCheckBox_(), rectConstraintWeightSpinBox_(),
+         angleConstraintCheckBox_(), angleConstraintMinSpinBox_(), angleConstraintMaxSpinBox_(), angleConstraintWeightSpinBox_(),
          nSolverIterationsSpinBox_(),
          quadGenWidthSpinBox_(), quadGenHeightSpinBox_(), triGenRadiusSpinBox_(), hingedTessellationCheckBox_(),
          cutting_tools_(),
