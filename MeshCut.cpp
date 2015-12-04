@@ -256,9 +256,9 @@ void MeshCut::initializePlugin()
    triGenLayout->addWidget(triGenButton);
    triGenRadiusSpinBox_ = new QSpinBox(toolBox_);
    triGenRadiusSpinBox_->setMinimum(0);
-   triGenRadiusSpinBox_->setMaximum(10);
+   triGenRadiusSpinBox_->setMaximum(20);
    triGenRadiusSpinBox_->setSingleStep(1);
-   triGenRadiusSpinBox_->setValue(1);
+   triGenRadiusSpinBox_->setValue(2);
    triGenLayout->addWidget(triGenRadiusSpinBox_);
    mainToolboxLayout->addItem(triGenLayout);
 
@@ -760,10 +760,17 @@ void MeshCut::applyCurve(BaseObjectData *object) {
    cutting_tools_->clearPath();
 
    // Notify OpenFlipper of changes
-   emit log(LOGOUT, "Drew curve on mesh");
-   emit updatedObject(object->id(), UPDATE_TOPOLOGY);
-   emit updateView();
-   emit createBackup(object->id(), "Path application", UPDATE_TOPOLOGY);
+   if (clampToEdgeCheckBox_->isChecked()) {
+       emit log(LOGOUT, "Selected path on mesh");
+       emit updatedObject(object->id(), UPDATE_SELECTION);
+       emit updateView();
+       emit createBackup(object->id(), "Path application", UPDATE_SELECTION);
+   } else {
+       emit log(LOGOUT, "Drew curve on mesh");
+       emit updatedObject(object->id(), UPDATE_TOPOLOGY);
+       emit updateView();
+       emit createBackup(object->id(), "Path application", UPDATE_TOPOLOGY);
+   }
 }
 
 /** \brief Update mesh after a change in topology or geometry
@@ -868,6 +875,8 @@ void MeshCut::slotCutSelectedEdges() {
             }
          }
 
+         mesh.update_normals();
+
          emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " TriMesh edges");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
          emit updateView();
@@ -884,6 +893,8 @@ void MeshCut::slotCutSelectedEdges() {
                ++n_cuts;
             }
          }
+
+         mesh.update_normals();
 
          emit log(LOGOUT, "Cut " + QString::number(n_cuts) + " PolyMesh edges");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
@@ -975,6 +986,8 @@ void MeshCut::slotSplitVertex() {
             }
          }
 
+         mesh.update_normals();
+
          emit log(LOGOUT, "Split " + QString::number(n_splits) + " TriMesh vertices");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
          emit updateView();
@@ -991,6 +1004,8 @@ void MeshCut::slotSplitVertex() {
                ++n_splits;
             }
          }
+
+         mesh.update_normals();
 
          emit log(LOGOUT, "Split " + QString::number(n_splits) + " PolyMesh vertices");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);

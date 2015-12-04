@@ -319,6 +319,8 @@ void Cutting::splitAndSelect(MeshT &mesh) {
    }
    edges_split.clear();
 
+   mesh.update_normals();
+
    // Select
    selectMarkedEdges(mesh);
 }
@@ -545,6 +547,8 @@ bool Cutting::cutPrimitive(typename MeshT::EdgeHandle edge, MeshT& mesh, bool jo
       splitVertex(vh_up, mesh);
       splitVertex(vh_down, mesh);
    }
+
+   mesh.update_normals();
 
    return true;
 }
