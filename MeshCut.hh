@@ -81,6 +81,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       /// Shape tools slots
       void slotUseShapeToolsCheckBoxToggled();
       void slotFixSelectedVertices();
+      void slotRigidify();
       void slotFlagUpdate();
       void slotConstraintCheckBoxToggled();
       void slotUpdateMesh();

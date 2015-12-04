@@ -44,6 +44,10 @@ private:
    std::vector<int> handleIdxs_;
    std::map<int,int> handleConstraintIds_;
 
+   // Rigid
+   double rigidConstraintWeight_;
+   std::vector<int> rigidIdxs_;
+
    // Edge strain
    double edgeStrainWeight_;
    bool edgeStrainActive_;
@@ -81,6 +85,7 @@ public:
    ShapeTools() : solver_(NULL), update_needed_(true), object_id_(-1), triMesh_(0), polyMesh_(0),
       fixedConstraintWeight_(WEIGHT_MAX), fixedVerticesIdx_(),
       handleConstraintWeight_(WEIGHT_HANDLE), handleIdxs_(), handleConstraintIds_(),
+      rigidConstraintWeight_(WEIGHT_MAX), rigidIdxs_(),
       edgeStrainWeight_(WEIGHT_DEFAULT), edgeStrainActive_(false),
       triangleStrainWeight_(WEIGHT_DEFAULT), triangleStrainActive_(false),
       areaConstraintWeight_(WEIGHT_DEFAULT), areaMin_(RANGE_DEFAULT), areaMax_(RANGE_DEFAULT), areaConstraintActive_(false),
@@ -98,6 +103,7 @@ public:
    bool updateNeeded() { return update_needed_; }
 
    void fixVertices(std::set<int> v_idxs) { fixedVerticesIdx_ = v_idxs; }
+   void setRigid(std::vector<int> v_idxs) { rigidIdxs_ = v_idxs; }
 
    /**
     * @brief setHandles Saves the given handle indices and flags an update if it has changed

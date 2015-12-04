@@ -27,6 +27,12 @@ void ShapeTools::setConstraints() {
       if (c) handleConstraintIds_.insert(std::make_pair(*idx_it, solver_->addConstraint(c)));
    }
 
+   // Rigid constraints
+   if (!rigidIdxs_.empty()) {
+      auto c = std::make_shared<ShapeOp::SimilarityConstraint>(rigidIdxs_, rigidConstraintWeight_, solver_->getPoints(), false);
+      if (c) solver_->addConstraint(c);
+   }
+
    // Edge strain
    if (edgeStrainActive_) {
       if (triMesh_) {

@@ -86,6 +86,11 @@ void MeshCut::initializePlugin()
    fixSelectedButton->setToolTip("Set vertices to be fixed to their current position");
    mainToolboxLayout->addWidget(fixSelectedButton);
 
+   // Rigid shape
+   QPushButton* rigidifyButton = new QPushButton("Rigidify selected shape", toolBox_);
+   rigidifyButton->setToolTip("Rigidify shape given by selected vertices");
+   mainToolboxLayout->addWidget(rigidifyButton);
+
    /// Constraints
    // Titles
    QHBoxLayout* constraintTitlesLayout = new QHBoxLayout(toolBox_);
@@ -304,6 +309,7 @@ void MeshCut::initializePlugin()
 
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
    connect(fixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
+   connect(rigidifyButton, SIGNAL(clicked()), this, SLOT(slotRigidify()));
    connect(edgeStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
    connect(edgeStrainWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(triangleStrainCheckBox_, SIGNAL(stateChanged(int)), this, SLOT(slotConstraintCheckBoxToggled()));
@@ -1103,6 +1109,49 @@ void MeshCut::slotFixSelectedVertices() {
    }
 
    emit updateView();
+}
+
+/** \brief Sets a set of vertices to be rigid with respect to each other
+ *
+ */
+void MeshCut::slotRigidify() {
+    std::vector<int> v_idxs;
+    PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+    for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+       v_idxs.clear();
+
+       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
+
+          TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
+          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+             if (mesh.status(*v_it).selected()) {
+                v_idxs.push_back((*v_it).idx());
+
+                mesh.status(*v_it).set_selected(false);
+             }
+          }
+       } else if (o_it->dataType(DATA_POLY_MESH)) {
+          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
+
+          PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
+          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
+             if (mesh.status(*v_it).selected()) {
+                v_idxs.push_back((*v_it).idx());
+
+                mesh.status(*v_it).set_selected(false);
+             }
+          }
+       }
+
+       shape_tools_->setRigid(v_idxs);
+       emit updatedObject(o_it->id(), UPDATE_SELECTION);
+
+       /// At the moment, only one object is supported
+       break;
+    }
+
+    emit updateView();
 }
 
 /** \brief Flag update to shape tools
