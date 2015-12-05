@@ -748,6 +748,8 @@ void Cutting::attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::V
       }
    }
 
+   /// IMPORTANT TODO: Mesh disappears when attaching two vertices and then performing update
+
    if (isOnBorderLeft && isOnBorderRight) {
       typename MeshT::HalfedgeHandle heh_border_left_down = mesh.next_halfedge_handle(heh_border_left_up);
       typename MeshT::HalfedgeHandle heh_border_right_up = mesh.next_halfedge_handle(heh_border_right_down);

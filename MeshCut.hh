@@ -108,7 +108,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void showPath(ACG::Vec3d _prev_point, ACG::Vec3d _curr_point, BaseObjectData *object);
       // Finalize mouse interaction
       void applyCurve(BaseObjectData* object);
-      void updateMesh(bool _specify_n_iterations = false);
+      bool updateMesh(bool _specify_n_iterations = false);
 
       QToolBar* toolBar_;
       bool mouseDown_;
@@ -196,7 +196,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          cutting_tools_(),
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),
-         shape_tools_(), use_shape_tools_(false), object_updated_(false),
+         shape_tools_(), use_shape_tools_(false), object_updated_(true),
          mesh_generator_() {}
       ~MeshCut(){ delete cutting_tools_; delete shape_tools_; delete mesh_generator_; }
 

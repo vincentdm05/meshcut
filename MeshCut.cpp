@@ -53,7 +53,7 @@ void MeshCut::initializePlugin()
    cutButton->setToolTip("Cut selected edges.");
    mainToolboxLayout->addWidget(cutButton);
 
-   QPushButton* attachButton = new QPushButton("&Attach selected", toolBox_);
+   QPushButton* attachButton = new QPushButton("&Attach selected vertices", toolBox_);
    attachButton->setToolTip("Attach selected vertices together");
    mainToolboxLayout->addWidget(attachButton);
 
@@ -429,10 +429,9 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
       selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
       mouseDraw(_event);
-   } else if (object_updated_ && PluginFunctions::pickMode() == "MoveSelection" &&
+   } else if (use_shape_tools_ && object_updated_ && PluginFunctions::pickMode() == "MoveSelection" &&
               PluginFunctions::actionMode() == Viewer::PickingMode) {
-      updateMesh();
-      object_updated_ = false;
+      if (updateMesh()) object_updated_ = false;
    }
 }
 
@@ -442,9 +441,9 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
  * @param _type
  */
 void MeshCut::slotObjectUpdated(int _id, const UpdateType& _type) {
-   if (use_shape_tools_ && _type == UPDATE_GEOMETRY) {
+   if (_id == shape_tools_->getObjId() && _type == UPDATE_GEOMETRY) {
       object_updated_ = true;
-   } else if (use_shape_tools_ && _id == shape_tools_->getObjId() && _type == UPDATE_TOPOLOGY) {
+   } else if (_id == shape_tools_->getObjId() && _type == UPDATE_TOPOLOGY) {
       shape_tools_->flagUpdateNeeded();
       object_updated_ = true;
    }
@@ -811,7 +810,9 @@ void MeshCut::applyCurve(BaseObjectData *object) {
 /** \brief Update mesh after a change in topology or geometry
  *
  */
-void MeshCut::updateMesh(bool _specify_n_iterations) {
+bool MeshCut::updateMesh(bool _specify_n_iterations) {
+   bool updated = false;
+
    PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
    for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
@@ -838,6 +839,8 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            angleConstraintMinSpinBox_->value()*DEG2RAD,
                                            angleConstraintMaxSpinBox_->value()*DEG2RAD,
                                            angleConstraintWeightSpinBox_->value());
+
+         updated = true;
 
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
@@ -871,6 +874,8 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
                                            angleConstraintMaxSpinBox_->value()*DEG2RAD,
                                            angleConstraintWeightSpinBox_->value());
 
+         updated = true;
+
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
 
@@ -892,6 +897,8 @@ void MeshCut::updateMesh(bool _specify_n_iterations) {
       /// TODO: support multiple objects
       break;
    }
+
+   return updated;
 }
 
 /** \brief Cuts all selected edges
@@ -1076,7 +1083,6 @@ void MeshCut::slotSplitVertex() {
  */
 void MeshCut::slotUseShapeToolsCheckBoxToggled() {
    use_shape_tools_ = !use_shape_tools_;
-   shape_tools_->flagUpdateNeeded();
 }
 
 /** \brief Toggle closenessConstraint on selected vertices
