@@ -4,6 +4,7 @@
 #define EDGE_CUT_POPUP "<B>Edge Cut</B><br>Cut along selected edge"
 #define SELECT_EDGES_PICKMODE "MeshCut: Edge select"
 #define DRAW_CUT_PICKMODE "MeshCut: Draw cut"
+#define SELECT_VERTICES_PICKMODE "MeshCut: Vertex select"
 
 Q_EXPORT_PLUGIN2( meshCut , MeshCut );
 
@@ -27,10 +28,10 @@ void MeshCut::initializePlugin()
    QHBoxLayout* toggleLayout = new QHBoxLayout(toolBox_);
    toggleLayout->setSpacing(5);
 
-   selectButton_ = new QPushButton("&Select Edges", toolBox_);
-   selectButton_->setToolTip("Select edges to be cut");
-   selectButton_->setCheckable(true);
-   toggleLayout->addWidget(selectButton_);
+   selectEdgesButton_ = new QPushButton("&Select Edges", toolBox_);
+   selectEdgesButton_->setToolTip("Select edges to be cut");
+   selectEdgesButton_->setCheckable(true);
+   toggleLayout->addWidget(selectEdgesButton_);
 
    drawButton_ = new QPushButton("&Draw Curve", toolBox_);
    drawButton_->setToolTip("Draw a path to be cut");
@@ -53,13 +54,19 @@ void MeshCut::initializePlugin()
    cutButton->setToolTip("Cut selected edges.");
    mainToolboxLayout->addWidget(cutButton);
 
-   QPushButton* attachButton = new QPushButton("&Attach selected vertices", toolBox_);
-   attachButton->setToolTip("Attach selected vertices together");
-   mainToolboxLayout->addWidget(attachButton);
+   selectVerticesButton_ = new QPushButton("Select Vertices", toolBox_);
+   selectVerticesButton_->setCheckable(true);
+   mainToolboxLayout->addWidget(selectVerticesButton_);
 
-   QPushButton* splitVertexButton = new QPushButton("&Split selected vertices", toolBox_);
+   QHBoxLayout* vertexActionButtonsLayout = new QHBoxLayout(toolBox_);
+   vertexActionButtonsLayout->setSpacing(5);
+   QPushButton* mergeVerticesButton = new QPushButton("M&erge", toolBox_);
+   mergeVerticesButton->setToolTip("Merge selected vertices together");
+   vertexActionButtonsLayout->addWidget(mergeVerticesButton);
+   QPushButton* splitVertexButton = new QPushButton("S&plit", toolBox_);
    splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
-   mainToolboxLayout->addWidget(splitVertexButton);
+   vertexActionButtonsLayout->addWidget(splitVertexButton);
+   mainToolboxLayout->addItem(vertexActionButtonsLayout);
 
    // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
@@ -301,10 +308,11 @@ void MeshCut::initializePlugin()
    mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
 
    /// Connect signals->slots
-   connect(selectButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
-   connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotSelectionButtonClicked()));
+   connect(selectEdgesButton_, SIGNAL(clicked()), this, SLOT(slotSelectEdgesButtonClicked()));
+   connect(drawButton_, SIGNAL(clicked()), this, SLOT(slotDrawButtonClicked()));
    connect(cutButton, SIGNAL(clicked()), this, SLOT(slotCutSelectedEdges()));
-   connect(attachButton, SIGNAL(clicked()), this, SLOT(slotAttachSelected()));
+   connect(selectVerticesButton_, SIGNAL(clicked()), this, SLOT(slotSelectVerticesButtonClicked()));
+   connect(mergeVerticesButton, SIGNAL(clicked()), this, SLOT(slotMergeSelected()));
    connect(splitVertexButton, SIGNAL(clicked()), this, SLOT(slotSplitVertex()));
 
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
@@ -329,6 +337,7 @@ void MeshCut::initializePlugin()
    connect(angleConstraintMaxSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotFlagUpdate()));
    connect(angleConstraintWeightSpinBox_, SIGNAL(valueChanged(double)), this, SLOT(slotFlagUpdate()));
    connect(updateButton, SIGNAL(clicked()), this, SLOT(slotUpdateMesh()));
+   connect(nSolverIterationsSpinBox_, SIGNAL(valueChanged(int)), this, SLOT(slotNSolverIterationsChanged()));
 
    connect(quadGenButton, SIGNAL(clicked()), this, SLOT(slotQuadGen()));
    connect(triGenButton, SIGNAL(clicked()), this, SLOT(slotTriGen()));
@@ -365,6 +374,7 @@ void MeshCut::pluginsInitialized()
    // Cutting toolbox
    emit addHiddenPickMode(SELECT_EDGES_PICKMODE);
    emit addHiddenPickMode(DRAW_CUT_PICKMODE);
+   emit addHiddenPickMode(SELECT_VERTICES_PICKMODE);
 }
 
 /** \brief Toolbar action trigger
@@ -377,31 +387,30 @@ void MeshCut::toolBarTriggered(QAction* _action) {
    PluginFunctions::actionMode(Viewer::PickingMode);
 }
 
-/** \brief Selection button clicked
- *
- */
-void MeshCut::slotSelectionButtonClicked() {
-   // Double button toggle
-   if (selectButton_->isChecked() && drawButton_->isChecked()) {
-      PluginFunctions::actionMode(Viewer::PickingMode);
-      if (selectionButtonToggled_ == 2) {
-         PluginFunctions::pickMode(SELECT_EDGES_PICKMODE);
-         selectionButtonToggled_ = 1;
-      } else {
-         PluginFunctions::pickMode(DRAW_CUT_PICKMODE);
-         selectionButtonToggled_ = 2;
-      }
-   } else if (selectButton_->isChecked()) {
+void MeshCut::slotSelectEdgesButtonClicked() {
+   if (selectEdgesButton_->isChecked()) {
       PluginFunctions::actionMode(Viewer::PickingMode);
       PluginFunctions::pickMode(SELECT_EDGES_PICKMODE);
-      selectionButtonToggled_ = 1;
-   } else if (drawButton_->isChecked()) {
-      PluginFunctions::actionMode(Viewer::PickingMode);
-      PluginFunctions::pickMode(DRAW_CUT_PICKMODE);
-      selectionButtonToggled_ = 2;
    } else {
       PluginFunctions::actionMode(Viewer::ExamineMode);
-      selectionButtonToggled_ = 0;
+   }
+}
+
+void MeshCut::slotDrawButtonClicked() {
+   if (drawButton_->isChecked()) {
+      PluginFunctions::actionMode(Viewer::PickingMode);
+      PluginFunctions::pickMode(DRAW_CUT_PICKMODE);
+   } else {
+      PluginFunctions::actionMode(Viewer::ExamineMode);
+   }
+}
+
+void MeshCut::slotSelectVerticesButtonClicked() {
+   if (selectVerticesButton_->isChecked()) {
+      PluginFunctions::actionMode(Viewer::PickingMode);
+      PluginFunctions::pickMode(SELECT_VERTICES_PICKMODE);
+   } else {
+      PluginFunctions::actionMode(Viewer::ExamineMode);
    }
 }
 
@@ -410,8 +419,9 @@ void MeshCut::slotSelectionButtonClicked() {
  */
 void MeshCut::slotPickModeChanged(const std::string& _mode) {
    edgeCutAction_->setChecked(_mode == EDGE_CUT_POPUP);
-   selectButton_->setChecked(_mode == SELECT_EDGES_PICKMODE);
+   selectEdgesButton_->setChecked(_mode == SELECT_EDGES_PICKMODE);
    drawButton_->setChecked(_mode == DRAW_CUT_PICKMODE);
+   selectVerticesButton_->setChecked(_mode == SELECT_VERTICES_PICKMODE);
 }
 
 /** \brief Called when the mouse is clicked
@@ -429,6 +439,8 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
       selectEdge(_event);
    } else if (PluginFunctions::pickMode() == DRAW_CUT_PICKMODE) {
       mouseDraw(_event);
+   } else if (PluginFunctions::pickMode() == SELECT_VERTICES_PICKMODE) {
+      selectVertex(_event);
    } else if (use_shape_tools_ && object_updated_ && PluginFunctions::pickMode() == "MoveSelection" &&
               PluginFunctions::actionMode() == Viewer::PickingMode) {
       if (updateMesh()) object_updated_ = false;
@@ -673,10 +685,9 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
       emit log(LOGOUT, QString::fromStdString(prefix) + "elected TriMesh edge " + QString::number(active_edge_));
       emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
       emit updateView();
-      emit createBackup(object->id(), "Edge cut", UPDATE_SELECTION_EDGES);
+      emit createBackup(object->id(), "Edge selection", UPDATE_SELECTION_EDGES);
 
    } else if (object->dataType(DATA_POLY_MESH)) {
-      emit log(LOGWARN, "Polymesh data structure not yet supported.");
       PolyMesh& mesh = *PluginFunctions::polyMesh(object);
 
       // Toggle edge selection
@@ -687,7 +698,7 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
       emit log(LOGOUT, QString::fromStdString(prefix) + "elected PolyMesh edge " + QString::number(active_edge_));
       emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
       emit updateView();
-      emit createBackup(object->id(), "Edge cut", UPDATE_SELECTION_EDGES);
+      emit createBackup(object->id(), "Edge selection", UPDATE_SELECTION_EDGES);
    }
 }
 
@@ -733,6 +744,46 @@ void MeshCut::mouseDraw(QMouseEvent* _event) {
       if (object && !visible_path_.empty()) {
          applyCurve(object);
       }
+   }
+}
+
+/** \brief Toggle vertex selection
+ *
+ * @param _event
+ */
+void MeshCut::selectVertex(QMouseEvent *_event) {
+   if (_event->type() != QEvent::MouseButtonPress)
+      return;
+
+   BaseObjectData* object = setActiveElements(_event->pos());
+   if (!object)
+      return;
+
+   if (object->dataType(DATA_TRIANGLE_MESH)) {
+      TriMesh& mesh = *PluginFunctions::triMesh(object);
+
+      // Toggle vertex selection
+      TriMesh::VertexHandle vh = mesh.vertex_handle(active_vertex_);
+      mesh.status(vh).set_selected(!mesh.status(vh).selected());
+
+      const char* prefix = mesh.status(vh).selected() ? "S" : "Des";
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected TriMesh vertex " + QString::number(active_edge_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit updateView();
+      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_EDGES);
+
+   } else if (object->dataType(DATA_POLY_MESH)) {
+      PolyMesh& mesh = *PluginFunctions::polyMesh(object);
+
+      // Toggle vertex selection
+      PolyMesh::VertexHandle vh = mesh.vertex_handle(active_vertex_);
+      mesh.status(vh).set_selected(!mesh.status(vh).selected());
+
+      const char* prefix = mesh.status(vh).selected() ? "S" : "Des";
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected PolyMesh vertex " + QString::number(active_edge_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit updateView();
+      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_EDGES);
    }
 }
 
@@ -952,10 +1003,10 @@ void MeshCut::slotCutSelectedEdges() {
    }
 }
 
-/** \brief Attach selected vertices together
+/** \brief Merge selected vertices together
  *
  */
-void MeshCut::slotAttachSelected() {
+void MeshCut::slotMergeSelected() {
    PluginFunctions::ObjectIterator o_it(PluginFunctions::ALL_OBJECTS);
    for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
@@ -979,19 +1030,19 @@ void MeshCut::slotAttachSelected() {
             }
          }
 
-         // And attach
+         // And merge
          if (!found && vh0 != vh1) {
-            cutting_tools_->attachVertices(vh0, vh1, mesh);
+            cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
          mesh.status(vh0).set_selected(false);
          mesh.status(vh1).set_selected(false);
 
          mesh.update_normals();
 
-         emit log(LOGOUT, "Attached TriMesh vertices");
+         emit log(LOGOUT, "Merged TriMesh vertices");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
          emit updateView();
-         emit createBackup(o_it->id(), "Attached vertices", UPDATE_TOPOLOGY);
+         emit createBackup(o_it->id(), "Merged vertices", UPDATE_TOPOLOGY);
       } else if (o_it->dataType(DATA_POLY_MESH)) {
          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
@@ -1012,19 +1063,19 @@ void MeshCut::slotAttachSelected() {
             }
          }
 
-         // And attach
+         // And merge
          if (!found && vh0.idx() != vh1.idx()) {
-            cutting_tools_->attachVertices(vh0, vh1, mesh);
+            cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
          mesh.status(vh0).set_selected(false);
          mesh.status(vh1).set_selected(false);
 
          mesh.update_normals();
 
-         emit log(LOGOUT, "Attached Polymesh vertices");
+         emit log(LOGOUT, "Merged Polymesh vertices");
          emit updatedObject(o_it->id(), UPDATE_TOPOLOGY);
          emit updateView();
-         emit createBackup(o_it->id(), "Attached vertices", UPDATE_TOPOLOGY);
+         emit createBackup(o_it->id(), "Merged vertices", UPDATE_TOPOLOGY);
       }
    }
 }
@@ -1200,6 +1251,13 @@ void MeshCut::slotConstraintCheckBoxToggled() {
  */
 void MeshCut::slotUpdateMesh() {
    updateMesh(true);
+}
+
+/** \brief Update number of iterations for the solver
+ *
+ */
+void MeshCut::slotNSolverIterationsChanged() {
+   shape_tools_->setIterationNumber(nSolverIterationsSpinBox_->value());
 }
 
 /** \brief Generate a new quad mesh and add it to the scene

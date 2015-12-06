@@ -99,7 +99,7 @@ public:
 
    // Merge two vertices
    template<typename MeshT>
-   void attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh);
+   void mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh);
 
    /// Setters for mouse-recorded path
    void addPathPoint(PathPoint _point) {
@@ -728,7 +728,7 @@ void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
  * @param mesh The mesh
  */
 template<typename MeshT>
-void Cutting::attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
+void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
    // Test border assumption and record boundary halfedges
    bool isOnBorderLeft, isOnBorderRight;
    isOnBorderLeft = isOnBorderRight = false;
@@ -748,7 +748,7 @@ void Cutting::attachVertices(typename MeshT::VertexHandle vh0, typename MeshT::V
       }
    }
 
-   /// IMPORTANT TODO: Mesh disappears when attaching two vertices and then performing update
+   /// IMPORTANT TODO: Mesh disappears when combining two vertices and then performing update
 
    if (isOnBorderLeft && isOnBorderRight) {
       typename MeshT::HalfedgeHandle heh_border_left_down = mesh.next_halfedge_handle(heh_border_left_up);

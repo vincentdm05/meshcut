@@ -33,6 +33,7 @@ void ShapeTools::setConstraints() {
       if (c) solver_->addConstraint(c);
    }
 
+   /// TODO: add range for edge strain
    // Edge strain
    if (edgeStrainActive_) {
       if (triMesh_) {

@@ -73,9 +73,11 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
       /// Cutting tools slots
       // Cut mode selection
-      void slotSelectionButtonClicked();
+      void slotSelectEdgesButtonClicked();
+      void slotDrawButtonClicked();
       void slotCutSelectedEdges();
-      void slotAttachSelected();
+      void slotSelectVerticesButtonClicked();
+      void slotMergeSelected();
       void slotSplitVertex();
 
       /// Shape tools slots
@@ -85,6 +87,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotFlagUpdate();
       void slotConstraintCheckBoxToggled();
       void slotUpdateMesh();
+      void slotNSolverIterationsChanged();
 
       /// Mesh generation slots
       void slotQuadGen();
@@ -102,6 +105,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void selectEdge(QMouseEvent* _event);
       // Draw line to be cut
       void mouseDraw(QMouseEvent* _event);
+      // Select vertices for splitting or merging
+      void selectVertex(QMouseEvent* _event);
       // Solve and update positions of vertices on mesh
       void moveMesh(QMouseEvent* _event);
       // Show drawn path
@@ -116,12 +121,12 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       /// Cutting tools
       QAction* edgeCutAction_;
       QWidget* toolBox_;
-      QPushButton* selectButton_;
+      QPushButton* selectEdgesButton_;
       QPushButton* drawButton_;
       QCheckBox* clampToEdgeCheckBox_;
       QCheckBox* directCutCheckBox_;
       QCheckBox* independantCutsCheckBox_;
-      size_t selectionButtonToggled_;
+      QPushButton* selectVerticesButton_;
 
       /// Shape tools
       // Edge strain
@@ -183,8 +188,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
 
    public:
       MeshCut() :
-         toolBar_(0), mouseDown_(false), edgeCutAction_(0), toolBox_(0), selectButton_(0), drawButton_(0),
-         clampToEdgeCheckBox_(0), directCutCheckBox_(0), independantCutsCheckBox_(0), selectionButtonToggled_(0),
+         toolBar_(0), mouseDown_(false), edgeCutAction_(0), toolBox_(0), selectEdgesButton_(), drawButton_(),
+         clampToEdgeCheckBox_(), directCutCheckBox_(), independantCutsCheckBox_(), selectVerticesButton_(),
          edgeStrainCheckBox_(), edgeStrainWeightSpinBox_(),
          triangleStrainCheckBox_(), triangleStrainWeightSpinBox_(),
          areaConstraintCheckBox_(), areaConstraintMinSpinBox_(), areaConstraintMaxSpinBox_(), areaConstraintWeightSpinBox_(),

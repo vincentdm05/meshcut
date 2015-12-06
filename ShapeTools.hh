@@ -7,6 +7,8 @@
 #include <Solver.h>
 #include <Constraint.h>
 
+#define N_ITERATIONS_DEFAULT 10
+
 #define WEIGHT_MIN 0.0
 #define WEIGHT_MAX 10.0
 #define WEIGHT_STEP 0.01
@@ -82,7 +84,7 @@ private:
    void moveHandles();
 
 public:
-   ShapeTools() : solver_(NULL), update_needed_(true), object_id_(-1), triMesh_(0), polyMesh_(0),
+   ShapeTools() : solver_(NULL), solver_iterations_(N_ITERATIONS_DEFAULT), update_needed_(true), object_id_(-1), triMesh_(0), polyMesh_(0),
       fixedConstraintWeight_(WEIGHT_MAX), fixedVerticesIdx_(),
       handleConstraintWeight_(WEIGHT_HANDLE), handleIdxs_(), handleConstraintIds_(),
       rigidConstraintWeight_(WEIGHT_MAX), rigidIdxs_(),
@@ -91,9 +93,7 @@ public:
       areaConstraintWeight_(WEIGHT_DEFAULT), areaMin_(RANGE_DEFAULT), areaMax_(RANGE_DEFAULT), areaConstraintActive_(false),
       bendingConstraintWeight_(WEIGHT_DEFAULT), bendingMin_(RANGE_DEFAULT), bendingMax_(RANGE_DEFAULT), bendingConstraintActive_(false),
       rectConstraintWeight_(WEIGHT_DEFAULT), rectConstraintActive_(false),
-      angleConstraintWeight_(WEIGHT_DEFAULT), angleMin_(ANGLE_MIN), angleMax_(ANGLE_DEFAULT), angleConstraintActive_(false) {
-      solver_iterations_ = 50;
-   }
+      angleConstraintWeight_(WEIGHT_DEFAULT), angleMin_(ANGLE_MIN), angleMax_(ANGLE_DEFAULT), angleConstraintActive_(false) {}
    ~ShapeTools() { if (solver_ != NULL) delete solver_; }
 
    void setMesh(TriMesh* _mesh, int _object_id);
@@ -101,6 +101,8 @@ public:
 
    void flagUpdateNeeded() { update_needed_ = true; }
    bool updateNeeded() { return update_needed_; }
+
+   void setIterationNumber(size_t _n_its) { solver_iterations_ = _n_its; }
 
    void fixVertices(std::set<int> v_idxs) { fixedVerticesIdx_ = v_idxs; }
    void setRigid(std::vector<int> v_idxs) { rigidIdxs_ = v_idxs; }
