@@ -20,7 +20,7 @@
 
 #include "Cutting.hh"
 #include "ShapeTools.hh"
-#include "MeshGen.hh"
+#include "MeshTools.hh"
 
 class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface, ToolboxInterface, LoggingInterface, PickingInterface, BackupInterface, LoadSaveInterface {
    Q_OBJECT
@@ -186,7 +186,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       bool use_shape_tools_;
       bool object_updated_;
 
-      MeshGen* mesh_generator_;
+      MeshTools* mesh_tools_;
 
    public:
       MeshCut() :
@@ -204,8 +204,8 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
          active_hit_point_(0.0), active_face_(-1), active_edge_(-1), active_vertex_(-1),
          visible_path_(), latest_object_(0),
          shape_tools_(), use_shape_tools_(false), object_updated_(true),
-         mesh_generator_() {}
-      ~MeshCut(){ delete cutting_tools_; delete shape_tools_; delete mesh_generator_; }
+         mesh_tools_() {}
+      ~MeshCut(){ delete cutting_tools_; delete shape_tools_; delete mesh_tools_; }
 
       QString name() { return QString("MeshCut"); }
       QString description() { return QString("Cuts a mesh"); }

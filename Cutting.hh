@@ -695,7 +695,7 @@ void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
 
 /** \brief Merge two vertices into one
  *
- * Assuption: both vertices are on the same mesh.
+ * Assumption: both vertices lie on a boundary
  *
  *  Before:
  *                x             x   Up
@@ -734,9 +734,9 @@ void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
 template<typename MeshT>
 void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
    if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted()) return;
+   if (!mesh.is_boundary(vh0) || !mesh.is_boundary(vh1)) return;
 
-   /// TODO: Check for border instead of assuming always there
-   // Test border assumption and record boundary halfedges
+   // Record boundary halfedges
    bool isOnBorderLeft, isOnBorderRight;
    isOnBorderLeft = isOnBorderRight = false;
    typename MeshT::HalfedgeHandle heh_border_left_up, heh_border_right_down;
@@ -768,6 +768,13 @@ void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::Ve
       // Connect borders
       mesh.set_next_halfedge_handle(heh_border_left_up, heh_border_right_up);
       mesh.set_next_halfedge_handle(heh_border_right_down, heh_border_left_down);
+
+      // Move merged vertex to center of gravity
+      typename MeshT::Point p0, p1, p;
+      p0 = mesh.point(vh0);
+      p1 = mesh.point(vh1);
+      p = typename MeshT::Point((p0[0]+p1[0])/2.0, (p0[1]+p1[1])/2.0, (p0[2]+p1[2])/2.0);
+      mesh.set_point(vh0, p);
 
       // Finally, remove right side vertex
       mesh.set_halfedge_handle(vh1, typename MeshT::HalfedgeHandle());
@@ -886,6 +893,7 @@ Vec3Type Cutting::projectToFacePlane(Vec3Type _point_to_project, int _face_idx, 
 }
 
 /** \brief Merge two given meshes into one
+ * If the second mesh is a polymesh and the first a triangle mesh, it is the second that will carry the combined mesh.
  *
  * @param mesh0 The first mesh
  * @param mesh1 The second mesh

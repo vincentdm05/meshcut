@@ -15,7 +15,8 @@ void MeshCut::initializePlugin()
 {
    toolBox_ = new QWidget();
    QVBoxLayout* mainToolboxLayout = new QVBoxLayout(toolBox_);
-   QFont titleLabelFont("Arial", 15, QFont::Bold);
+   QFont titleLabelFont("Arial", 17, QFont::Bold);
+   QFont sectionLabelFont("Arial", 15, QFont::Normal, true);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
    /// Cutting tools
@@ -24,6 +25,11 @@ void MeshCut::initializePlugin()
    QLabel* cuttingLabel = new QLabel("Cutting tools");
    cuttingLabel->setFont(titleLabelFont);
    mainToolboxLayout->addWidget(cuttingLabel);
+
+   //******* Edge ops
+   QLabel* edgeOpsLabel = new QLabel("Edge operations");
+   edgeOpsLabel->setFont(sectionLabelFont);
+   mainToolboxLayout->addWidget(edgeOpsLabel);
 
    QHBoxLayout* toggleLayout = new QHBoxLayout(toolBox_);
    toggleLayout->setSpacing(5);
@@ -47,12 +53,23 @@ void MeshCut::initializePlugin()
 //   directCutCheckBox_ = new QCheckBox("Cut directly as the mouse clicks", toolBox_);
 //   mainToolboxLayout->addWidget(directCutCheckBox_);
 
-   independantCutsCheckBox_ = new QCheckBox("Don't split vertices", toolBox_);
-   mainToolboxLayout->addWidget(independantCutsCheckBox_);
-
    QPushButton* cutButton = new QPushButton("&Cut selected", toolBox_);
    cutButton->setToolTip("Cut selected edges.");
    mainToolboxLayout->addWidget(cutButton);
+
+   independantCutsCheckBox_ = new QCheckBox("Don't split vertices", toolBox_);
+   mainToolboxLayout->addWidget(independantCutsCheckBox_);
+
+   //******* Vertex ops
+   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QFrame* lineSectionSeparator0 = new QFrame();
+   lineSectionSeparator0->setFrameShape(QFrame::HLine);
+   lineSectionSeparator0->setFrameShadow(QFrame::Sunken);
+   mainToolboxLayout->addWidget(lineSectionSeparator0);
+
+   QLabel* vertexOpsLabel = new QLabel("Vertex operations");
+   vertexOpsLabel->setFont(sectionLabelFont);
+   mainToolboxLayout->addWidget(vertexOpsLabel);
 
    selectVerticesButton_ = new QPushButton("Select Vertices", toolBox_);
    selectVerticesButton_->setCheckable(true);
@@ -60,23 +77,33 @@ void MeshCut::initializePlugin()
 
    QHBoxLayout* vertexActionButtonsLayout = new QHBoxLayout(toolBox_);
    vertexActionButtonsLayout->setSpacing(5);
-   QPushButton* mergeVerticesButton = new QPushButton("&Merge", toolBox_);
+   QPushButton* mergeVerticesButton = new QPushButton("&Merge selected", toolBox_);
    mergeVerticesButton->setToolTip("Merge selected vertices together");
    vertexActionButtonsLayout->addWidget(mergeVerticesButton);
-   QPushButton* splitVertexButton = new QPushButton("S&plit", toolBox_);
+   QPushButton* splitVertexButton = new QPushButton("S&plit selected", toolBox_);
    splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
    vertexActionButtonsLayout->addWidget(splitVertexButton);
    mainToolboxLayout->addItem(vertexActionButtonsLayout);
 
-   QPushButton* combineMeshesButton = new QPushButton("Combine meshes", toolBox_);
-   combineMeshesButton->setToolTip("Combine all meshes into one");
+   //******* Mesh ops
+   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QFrame* lineSectionSeparator1 = new QFrame();
+   lineSectionSeparator1->setFrameShape(QFrame::HLine);
+   lineSectionSeparator1->setFrameShadow(QFrame::Sunken);
+   mainToolboxLayout->addWidget(lineSectionSeparator1);
+
+   QLabel* meshOpsLabel = new QLabel("Mesh operations");
+   meshOpsLabel->setFont(sectionLabelFont);
+   mainToolboxLayout->addWidget(meshOpsLabel);
+
+   QPushButton* combineMeshesButton = new QPushButton("Combine target meshes", toolBox_);
+   combineMeshesButton->setToolTip("Combine all target meshes into one. CAUTION: this is not reversible.");
    mainToolboxLayout->addWidget(combineMeshesButton);
 
    // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
    QFrame* lineSeparator0 = new QFrame();
    lineSeparator0->setFrameShape(QFrame::HLine);
-   lineSeparator0->setFrameShadow(QFrame::Sunken);
    mainToolboxLayout->addWidget(lineSeparator0);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -259,17 +286,16 @@ void MeshCut::initializePlugin()
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
    QFrame* lineSeparator1 = new QFrame();
    lineSeparator1->setFrameShape(QFrame::HLine);
-   lineSeparator1->setFrameShadow(QFrame::Sunken);
    mainToolboxLayout->addWidget(lineSeparator1);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
-   /// Mesh generator
-   mesh_generator_ = new MeshGen();
+   /// Mesh tools
+   mesh_tools_ = new MeshTools();
 
    // Tool title
-   QLabel* meshGenLabel = new QLabel("Mesh Generator");
-   meshGenLabel->setFont(titleLabelFont);
-   mainToolboxLayout->addWidget(meshGenLabel);
+   QLabel* meshToolsLabel = new QLabel("Mesh Tools");
+   meshToolsLabel->setFont(titleLabelFont);
+   mainToolboxLayout->addWidget(meshToolsLabel);
 
    // Tessellation checkbox
    hingedTessellationCheckBox_ = new QCheckBox("Hinged tessellation", toolBox_);
@@ -1019,28 +1045,38 @@ void MeshCut::slotMergeSelected() {
       if (o_it->dataType(DATA_TRIANGLE_MESH)) {
          TriMesh& mesh = *PluginFunctions::triMesh(*o_it);
 
-         /// TODO: find closest pairs
-         // Get both vertices
-         bool found = false;
-         TriMesh::VertexHandle vh0, vh1;
+         // Construct set of selected vertices
+         std::set<TriMesh::VertexHandle> vhs;
          TriMesh::VertexIter v_it, v_end(mesh.vertices_end());
          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
             if (mesh.status(*v_it).selected()) {
-               if (!found) {
-                  vh0 = *v_it;
-                  found = true;
-               } else {
-                  vh1 = *v_it;
-                  found = false;
-                  break;
-               }
+               vhs.insert(*v_it);
             }
          }
 
-         // And merge
-         if (!found && vh0 != vh1) {
+         while (vhs.size() > 1) {
+            std::set<TriMesh::VertexHandle>::iterator vh_it(vhs.begin()), vh_end(vhs.end());
+            TriMesh::VertexHandle vh0 = *vh_it++;
+            TriMesh::VertexHandle vh1 = *vh_it++;
+            TriMesh::Point p0 = mesh.point(vh0);
+            double min_dist = (mesh.point(vh1) - p0).norm();
+
+            // Find closest vertex to current vertex
+            for (; vh_it != vh_end; ++vh_it) {
+               double dist = (mesh.point(*vh_it) - p0).norm();
+               if (dist < min_dist) {
+                  min_dist = dist;
+                  vh1 = *vh_it;
+               }
+            }
+
+            // Remove currently processed vertices from set and deselect
+            vhs.erase(vh0);
+            vhs.erase(vh1);
             mesh.status(vh0).set_selected(false);
             mesh.status(vh1).set_selected(false);
+
+            // Merge
             cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
 
@@ -1054,27 +1090,38 @@ void MeshCut::slotMergeSelected() {
       } else if (o_it->dataType(DATA_POLY_MESH)) {
          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
-         // Get both vertices
-         bool found = false;
-         PolyMesh::VertexHandle vh0, vh1;
+         // Construct set of selected vertices
+         std::set<PolyMesh::VertexHandle> vhs;
          PolyMesh::VertexIter v_it, v_end(mesh.vertices_end());
          for (v_it = mesh.vertices_begin(); v_it != v_end; ++v_it) {
             if (mesh.status(*v_it).selected()) {
-               if (!found) {
-                  vh0 = *v_it;
-                  found = true;
-               } else {
-                  vh1 = *v_it;
-                  found = false;
-                  break;
-               }
+               vhs.insert(*v_it);
             }
          }
 
-         // And merge
-         if (!found && vh0.idx() != vh1.idx()) {
+         while (vhs.size() > 1) {
+            std::set<PolyMesh::VertexHandle>::iterator vh_it(vhs.begin()), vh_end(vhs.end());
+            PolyMesh::VertexHandle vh0 = *vh_it++;
+            PolyMesh::VertexHandle vh1 = *vh_it++;
+            PolyMesh::Point p0 = mesh.point(vh0);
+            double min_dist = (mesh.point(vh1) - p0).norm();
+
+            // Find closest vertex to current vertex
+            for (; vh_it != vh_end; ++vh_it) {
+               double dist = (mesh.point(*vh_it) - p0).norm();
+               if (dist < min_dist) {
+                  min_dist = dist;
+                  vh1 = *vh_it;
+               }
+            }
+
+            // Remove currently processed vertices from set and deselect
+            vhs.erase(vh0);
+            vhs.erase(vh1);
             mesh.status(vh0).set_selected(false);
             mesh.status(vh1).set_selected(false);
+
+            // Merge
             cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
 
@@ -1352,7 +1399,7 @@ void MeshCut::slotQuadGen() {
    PluginFunctions::getObject(id, meshObject);
 
    if (meshObject) {
-      mesh_generator_->generateQuadRect(meshObject->mesh(), quadGenWidthSpinBox_->value(),
+      mesh_tools_->generateQuadRect(meshObject->mesh(), quadGenWidthSpinBox_->value(),
                                         quadGenHeightSpinBox_->value(), hingedTessellationCheckBox_->isChecked());
 
       emit log(LOGOUT, "Created quad mesh");
@@ -1373,7 +1420,7 @@ void MeshCut::slotTriGen() {
    PluginFunctions::getObject(id, meshObject);
 
    if (meshObject) {
-      mesh_generator_->generateTriHex(meshObject->mesh(), triGenRadiusSpinBox_->value(),
+      mesh_tools_->generateTriHex(meshObject->mesh(), triGenRadiusSpinBox_->value(),
                                        hingedTessellationCheckBox_->isChecked());
 
       emit log(LOGOUT, "Created triangle mesh");
