@@ -41,3 +41,8 @@ Eigen::Vector3d MeshGen::vhToVec(typename MeshT::VertexHandle _h, MeshT* _m)
 { typename MeshT::Point p = _m->point(_h); return pToVec(p); }
 
 #endif // MESHGEN_HH
+
+
+
+
+

@@ -60,13 +60,17 @@ void MeshCut::initializePlugin()
 
    QHBoxLayout* vertexActionButtonsLayout = new QHBoxLayout(toolBox_);
    vertexActionButtonsLayout->setSpacing(5);
-   QPushButton* mergeVerticesButton = new QPushButton("M&erge", toolBox_);
+   QPushButton* mergeVerticesButton = new QPushButton("&Merge", toolBox_);
    mergeVerticesButton->setToolTip("Merge selected vertices together");
    vertexActionButtonsLayout->addWidget(mergeVerticesButton);
    QPushButton* splitVertexButton = new QPushButton("S&plit", toolBox_);
    splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
    vertexActionButtonsLayout->addWidget(splitVertexButton);
    mainToolboxLayout->addItem(vertexActionButtonsLayout);
+
+   QPushButton* combineMeshesButton = new QPushButton("Combine meshes", toolBox_);
+   combineMeshesButton->setToolTip("Combine all meshes into one");
+   mainToolboxLayout->addWidget(combineMeshesButton);
 
    // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
@@ -314,6 +318,7 @@ void MeshCut::initializePlugin()
    connect(selectVerticesButton_, SIGNAL(clicked()), this, SLOT(slotSelectVerticesButtonClicked()));
    connect(mergeVerticesButton, SIGNAL(clicked()), this, SLOT(slotMergeSelected()));
    connect(splitVertexButton, SIGNAL(clicked()), this, SLOT(slotSplitVertex()));
+   connect(combineMeshesButton, SIGNAL(clicked()), this, SLOT(slotCombineMeshes()));
 
    connect(useShapeToolsCheckBox, SIGNAL(stateChanged(int)), this, SLOT(slotUseShapeToolsCheckBoxToggled()));
    connect(fixSelectedButton, SIGNAL(clicked()), this, SLOT(slotFixSelectedVertices()));
@@ -445,6 +450,8 @@ void MeshCut::slotMouseEvent(QMouseEvent* _event) {
               PluginFunctions::actionMode() == Viewer::PickingMode) {
       if (updateMesh()) object_updated_ = false;
    }
+
+   /// TODO: Make own handle move code, or alternatively set correct selection toggles in selection plugin
 }
 
 /**
@@ -767,10 +774,10 @@ void MeshCut::selectVertex(QMouseEvent *_event) {
       mesh.status(vh).set_selected(!mesh.status(vh).selected());
 
       const char* prefix = mesh.status(vh).selected() ? "S" : "Des";
-      emit log(LOGOUT, QString::fromStdString(prefix) + "elected TriMesh vertex " + QString::number(active_edge_));
-      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected TriMesh vertex " + QString::number(active_vertex_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_VERTICES);
       emit updateView();
-      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_EDGES);
+      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_VERTICES);
 
    } else if (object->dataType(DATA_POLY_MESH)) {
       PolyMesh& mesh = *PluginFunctions::polyMesh(object);
@@ -780,10 +787,10 @@ void MeshCut::selectVertex(QMouseEvent *_event) {
       mesh.status(vh).set_selected(!mesh.status(vh).selected());
 
       const char* prefix = mesh.status(vh).selected() ? "S" : "Des";
-      emit log(LOGOUT, QString::fromStdString(prefix) + "elected PolyMesh vertex " + QString::number(active_edge_));
-      emit updatedObject(object->id(), UPDATE_SELECTION_EDGES);
+      emit log(LOGOUT, QString::fromStdString(prefix) + "elected PolyMesh vertex " + QString::number(active_vertex_));
+      emit updatedObject(object->id(), UPDATE_SELECTION_VERTICES);
       emit updateView();
-      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_EDGES);
+      emit createBackup(object->id(), "Vertex selection", UPDATE_SELECTION_VERTICES);
    }
 }
 
@@ -891,8 +898,6 @@ bool MeshCut::updateMesh(bool _specify_n_iterations) {
                                            angleConstraintMaxSpinBox_->value()*DEG2RAD,
                                            angleConstraintWeightSpinBox_->value());
 
-         updated = true;
-
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
 
@@ -900,6 +905,8 @@ bool MeshCut::updateMesh(bool _specify_n_iterations) {
             emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
             emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
          }
+
+         updated = true;
       } else if (o_it->dataType(DATA_POLY_MESH)) {
          PolyMesh& mesh = *PluginFunctions::polyMesh(*o_it);
 
@@ -925,8 +932,6 @@ bool MeshCut::updateMesh(bool _specify_n_iterations) {
                                            angleConstraintMaxSpinBox_->value()*DEG2RAD,
                                            angleConstraintWeightSpinBox_->value());
 
-         updated = true;
-
          if (shape_tools_->updateNeeded()) {
             shape_tools_->setMesh(&mesh, o_it->id());
 
@@ -934,6 +939,8 @@ bool MeshCut::updateMesh(bool _specify_n_iterations) {
             emit updatedObject(o_it->id(), UPDATE_GEOMETRY);
             emit createBackup(o_it->id(), "ShapeTools: Mesh set", UPDATE_GEOMETRY);
          }
+
+         updated = true;
       }
 
       if (_specify_n_iterations) {
@@ -1032,11 +1039,12 @@ void MeshCut::slotMergeSelected() {
 
          // And merge
          if (!found && vh0 != vh1) {
+            mesh.status(vh0).set_selected(false);
+            mesh.status(vh1).set_selected(false);
             cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
-         mesh.status(vh0).set_selected(false);
-         mesh.status(vh1).set_selected(false);
 
+         mesh.garbage_collection();
          mesh.update_normals();
 
          emit log(LOGOUT, "Merged TriMesh vertices");
@@ -1065,11 +1073,12 @@ void MeshCut::slotMergeSelected() {
 
          // And merge
          if (!found && vh0.idx() != vh1.idx()) {
+            mesh.status(vh0).set_selected(false);
+            mesh.status(vh1).set_selected(false);
             cutting_tools_->mergeVertices(vh0, vh1, mesh);
          }
-         mesh.status(vh0).set_selected(false);
-         mesh.status(vh1).set_selected(false);
 
+         mesh.garbage_collection();
          mesh.update_normals();
 
          emit log(LOGOUT, "Merged Polymesh vertices");
@@ -1127,6 +1136,78 @@ void MeshCut::slotSplitVertex() {
          emit createBackup(o_it->id(), "Selected vertices split", UPDATE_TOPOLOGY);
       }
    }
+}
+
+/** \brief Combine all target meshes into a single one
+ *
+ */
+void MeshCut::slotCombineMeshes() {
+   bool combineIntoTriMesh = true;
+   int mesh_id = -1;
+   TriMesh* origTriMesh;
+   PolyMesh* origPolyMesh;
+
+   // Get first mesh
+   PluginFunctions::ObjectIterator o_it(PluginFunctions::TARGET_OBJECTS);
+   while (o_it != PluginFunctions::objectsEnd() &&
+          !(o_it->dataType(DATA_TRIANGLE_MESH) || o_it->dataType(DATA_POLY_MESH))) {
+      ++o_it;
+   }
+   if (o_it == PluginFunctions::objectsEnd()) return;
+   if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+      origTriMesh = PluginFunctions::triMesh(*o_it);
+      mesh_id = o_it->id();
+   } else if (o_it->dataType(DATA_POLY_MESH)) {
+      combineIntoTriMesh = false;
+      origPolyMesh = PluginFunctions::polyMesh(*o_it);
+      mesh_id = o_it->id();
+   }
+   ++o_it;
+
+   // Get other meshes
+   std::vector<int> toDeleteIds;
+   for (; o_it != PluginFunctions::objectsEnd(); ++o_it) {
+      if (o_it->dataType(DATA_TRIANGLE_MESH)) {
+         TriMesh* mesh = PluginFunctions::triMesh(*o_it);
+
+         // Combine
+         if (combineIntoTriMesh) {
+            cutting_tools_->combineMeshes(origTriMesh, mesh);
+         } else {
+            cutting_tools_->combineMeshes(origPolyMesh, mesh);
+         }
+
+         // Remove other mesh
+         toDeleteIds.push_back(o_it->id());
+
+      } else if (o_it->dataType(DATA_POLY_MESH)) {
+         PolyMesh* mesh = PluginFunctions::polyMesh(*o_it);
+
+         if (combineIntoTriMesh) {
+            cutting_tools_->combineMeshes(mesh, origTriMesh);
+            if (mesh_id != -1) toDeleteIds.push_back(mesh_id);
+            origPolyMesh = mesh;
+            mesh_id = o_it->id();
+            origTriMesh = NULL;
+         } else {
+            cutting_tools_->combineMeshes(origPolyMesh, mesh);
+            toDeleteIds.push_back(o_it->id());
+         }
+
+         combineIntoTriMesh = false;
+      }
+   }
+
+   // Remove other meshes
+   std::vector<int>::iterator id_it = toDeleteIds.begin();
+   for (; id_it!=toDeleteIds.end(); ++id_it) {
+      emit deleteObject(*id_it);
+   }
+
+   emit log(LOGOUT, "Combined meshes");
+   emit updatedObject(mesh_id, UPDATE_TOPOLOGY);
+   emit updateView();
+   emit createBackup(mesh_id, "Combine", UPDATE_TOPOLOGY);
 }
 
 /** \brief Toggle the use of shape tools

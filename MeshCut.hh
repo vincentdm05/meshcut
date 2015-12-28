@@ -54,6 +54,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void createBackup( int _objectid, QString _name, UpdateType _type = UPDATE_ALL );
       // LoadSaveInterface
       void addEmptyObject( DataType _type, int& _id );
+      void deleteObject( int _id );
 
    private slots:
       // BaseInterface
@@ -79,6 +80,7 @@ class MeshCut : public QObject, BaseInterface, MouseInterface, ToolbarInterface,
       void slotSelectVerticesButtonClicked();
       void slotMergeSelected();
       void slotSplitVertex();
+      void slotCombineMeshes();
 
       /// Shape tools slots
       void slotUseShapeToolsCheckBoxToggled();

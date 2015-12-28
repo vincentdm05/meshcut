@@ -156,7 +156,7 @@ void MeshGen::generateQuadRect(PolyMesh* mesh, size_t _width, size_t _height, bo
 
 /** \brief Create a hexagon mesh of equilateral triangles with a given radius
  *
- * The radiu is the length of the smallest path from the center to the border.
+ * The radius is the length of the smallest path from the center to the border.
  * A radius of 0 yields a single triangle.
  * After that, #tri(r) = 6*r^2
  *

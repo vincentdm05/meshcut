@@ -101,6 +101,10 @@ public:
    template<typename MeshT>
    void mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh);
 
+   // Merge two meshes
+   template<typename MeshT0, typename MeshT1>
+   void combineMeshes(MeshT0* mesh0, MeshT1* mesh1);
+
    /// Setters for mouse-recorded path
    void addPathPoint(PathPoint _point) {
       if (!recorded_path_.empty() && std::get<TUPLE_FACE>(_point) != std::get<TUPLE_FACE>(recorded_path_.back())) {
@@ -691,7 +695,7 @@ void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
 
 /** \brief Merge two vertices into one
  *
- * Assuption: both vertices are on the same mesh and on the border of a cut.
+ * Assuption: both vertices are on the same mesh.
  *
  *  Before:
  *                x             x   Up
@@ -729,6 +733,9 @@ void Cutting::splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh) {
  */
 template<typename MeshT>
 void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh) {
+   if (mesh.status(vh0).deleted() || mesh.status(vh1).deleted()) return;
+
+   /// TODO: Check for border instead of assuming always there
    // Test border assumption and record boundary halfedges
    bool isOnBorderLeft, isOnBorderRight;
    isOnBorderLeft = isOnBorderRight = false;
@@ -747,8 +754,6 @@ void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::Ve
          isOnBorderRight = true;
       }
    }
-
-   /// IMPORTANT TODO: Mesh disappears when combining two vertices and then performing update
 
    if (isOnBorderLeft && isOnBorderRight) {
       typename MeshT::HalfedgeHandle heh_border_left_down = mesh.next_halfedge_handle(heh_border_left_up);
@@ -770,16 +775,16 @@ void Cutting::mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::Ve
    }
 }
 
-/** \brief Find closest vertex to hit point on a face
+/** \brief Find closest vertex to point on a face
  *
- * @param _hit_point The point on the face
+ * @param _point The point on the face
  * @param _face_idx The index of the face
  * @param mesh The mesh
  * @return The index of the closest vertex
  */
 template<typename Vec3Type, typename MeshT>
-int Cutting::closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh) {
-   typename MeshT::Point hit_point(_hit_point[0], _hit_point[1], _hit_point[2]);
+int Cutting::closestVertexOnFace(Vec3Type _point, int _face_idx, MeshT& mesh) {
+   typename MeshT::Point point(_point[0], _point[1], _point[2]);
    typename MeshT::FaceHandle faceh = mesh.face_handle(_face_idx);
 
    // Get all vertices
@@ -792,9 +797,9 @@ int Cutting::closestVertexOnFace(Vec3Type _hit_point, int _face_idx, MeshT& mesh
    // Find closest Vertex
    typename std::vector<typename MeshT::VertexHandle>::iterator v_it(vertexHandles.begin());
    typename MeshT::VertexHandle vertex(*v_it++);
-   double min_v_dist = (mesh.point(vertex) - hit_point).norm();
+   double min_v_dist = (mesh.point(vertex) - point).norm();
    for (; v_it != vertexHandles.end(); ++v_it) {
-      double v_dist = (mesh.point(*v_it) - hit_point).norm();
+      double v_dist = (mesh.point(*v_it) - point).norm();
       if (v_dist < min_v_dist) {
          min_v_dist = v_dist;
          vertex = *v_it;
@@ -878,6 +883,47 @@ Vec3Type Cutting::projectToFacePlane(Vec3Type _point_to_project, int _face_idx, 
    Eigen::Vector3d projection = plane.projection(p);
 
    return Vec3Type(projection[0], projection[1], projection[2]);
+}
+
+/** \brief Merge two given meshes into one
+ *
+ * @param mesh0 The first mesh
+ * @param mesh1 The second mesh
+ */
+template<typename MeshT0, typename MeshT1>
+void Cutting::combineMeshes(MeshT0* mesh0, MeshT1* mesh1) {
+   if (mesh0 == NULL || mesh1 == NULL) return;
+   if (mesh0->n_vertices() == 0 || mesh1->n_vertices() == 0) return;
+
+   if (mesh0->is_trimesh() && mesh1->is_polymesh()) {   // Merged mesh is in the second original mesh
+      combineMeshes(mesh1, mesh0);
+
+   } else { // Merged mesh is in the first original mesh
+      std::map<typename MeshT0::VertexHandle, typename MeshT0::VertexHandle> vmap;
+
+      // Add new vertices
+      typename MeshT1::VertexIter v_it, v_end(mesh1->vertices_end());
+      for (v_it = mesh1->vertices_begin(); v_it!=v_end; ++v_it) {
+         typename MeshT0::VertexHandle vh = mesh0->add_vertex(typename MeshT1::Point(mesh1->point(*v_it)));
+         vmap[*v_it] = vh;
+      }
+
+      // Add faces
+      std::vector<typename MeshT0::VertexHandle> face;
+      typename MeshT1::FaceIter f_it, f_end(mesh1->faces_end());
+      for (f_it = mesh1->faces_begin(); f_it!=f_end; ++f_it) {
+         typename MeshT1::FaceVertexIter fv_it = mesh1->fv_iter(*f_it);
+         for (; fv_it; ++fv_it) {
+            face.push_back(vmap[*fv_it]);
+         }
+         mesh0->add_face(face);
+
+         face.clear();
+      }
+
+      // Update first mesh
+      mesh0->update_normals();
+   }
 }
 
 
