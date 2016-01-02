@@ -344,21 +344,29 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       PathPoint curr_point = recorded_path_.front();
       recorded_path_.pop_front();
       PathPoint next_point = recorded_path_.front();
-      while (recorded_path_.size() > 1 && std::get<TUPLE_VERTEX>(next_point) == std::get<TUPLE_VERTEX>(curr_point)) {
+      while (recorded_path_.size() > 1 && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(next_point)) {
          curr_point = next_point;
          recorded_path_.pop_front();
          next_point = recorded_path_.front();
       }
-      if (recorded_path_.size() < 2 && std::get<TUPLE_VERTEX>(next_point) == std::get<TUPLE_VERTEX>(curr_point)) break;
-
-      /// TODO: check if edge is connected to vertex, otherwise skip.
-      /// This is due to obtuse triangles, where the path gets closer to the opposite vertex when following an edge.
+      if (recorded_path_.size() < 2 && std::get<TUPLE_VERTEX>(curr_point) == std::get<TUPLE_VERTEX>(next_point)) break;
 
       // Get the two points and their closest edge
 //      ACG::Vec3d curr_hit_point = std::get<TUPLE_POINT>(curr_point);
       int curr_edge = std::get<TUPLE_EDGE>(curr_point);
       ACG::Vec3d next_hit_point = std::get<TUPLE_POINT>(next_point);
       int next_edge = std::get<TUPLE_EDGE>(next_point);
+
+      /// Check if current edge is connected to current vertex, if not skip.
+      /// This is due to obtuse or right triangles, where the path gets closer to the opposite vertex when following an edge.
+      bool isConnected = false;
+      typename MeshT::VertexEdgeIter ve_it = mesh.ve_iter(mesh.vertex_handle(std::get<TUPLE_VERTEX>(next_point)));
+      for (; ve_it.is_valid(); ++ve_it) {
+         if (ve_it->idx() == next_edge) {
+            isConnected = true;
+         }
+      }
+      if (!isConnected) continue;
 
       int next_path_vertex = std::get<TUPLE_VERTEX>(next_point);
       if (curr_edge == next_edge) {

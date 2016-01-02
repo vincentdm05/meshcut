@@ -26,6 +26,9 @@ public:
 
    void generateQuadRect(PolyMesh* mesh, size_t _width, size_t _height, bool _tessellate = false);
    void generateTriHex(TriMesh* mesh, size_t _radius, bool _tessellate = false);
+
+   template<typename MeshT>
+   void hingedSubdivide(MeshT* mesh);
 };
 
 /// TEMPLATED FUNCTIONS DEFINITION
@@ -39,6 +42,18 @@ Eigen::Vector3d MeshTools::pToVec (PType _p) { return Eigen::Vector3d(_p[0],_p[1
 template<typename MeshT>
 Eigen::Vector3d MeshTools::vhToVec(typename MeshT::VertexHandle _h, MeshT* _m)
 { typename MeshT::Point p = _m->point(_h); return pToVec(p); }
+
+template<typename MeshT>
+void MeshTools::hingedSubdivide(MeshT* mesh) {
+   typename MeshT::FaceIter f_it, f_end(mesh->faces_end());
+   for (f_it = mesh->faces_begin(); f_it!=f_end; ++f_it) {
+      /// TODO
+   }
+}
+
+
+
+
 
 #endif // MESHTOOLS_HH
 
