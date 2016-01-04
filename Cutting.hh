@@ -344,6 +344,9 @@ void Cutting::clampAndSelect(MeshT& mesh) {
    v_edges_to_select_.push(std::get<TUPLE_VERTEX>(recorded_path_.front()));
 
    while (recorded_path_.size() > 1) {
+      // Reset jump memory
+      if (!jumping) jump_visited.clear();
+
       // Advance until there is a change of vertex
       PathPoint curr_point = recorded_path_.front();
       recorded_path_.pop_front();
@@ -371,11 +374,10 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       }
       if (!isConnected) continue;
 
+      // Normal vertex registration
       if (curr_edge == next_edge) {
          v_edges_to_select_.push(next_path_vertex);
 
-         // Reset jump memory
-         if (jumping) jump_visited.clear();
          jumping = false;
       }
       // Jump
@@ -398,6 +400,8 @@ void Cutting::clampAndSelect(MeshT& mesh) {
                }
             }
          }
+         // If no vertex was found, move to the next vertex
+         if (min_dist == std::numeric_limits<double>::max()) continue;
 
          // Record vertex
          v_edges_to_select_.push(candidate_next_vertex_idx);

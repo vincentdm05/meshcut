@@ -27,9 +27,12 @@ void MeshCut::initializePlugin()
    mainToolboxLayout->addWidget(cuttingLabel);
 
    //******* Edge ops
+   QVBoxLayout* edgeOpsLayout = new QVBoxLayout(toolBox_);
+   QGroupBox* edgeOpsGroup = new QGroupBox(toolBox_);
+
    QLabel* edgeOpsLabel = new QLabel("Edge operations");
    edgeOpsLabel->setFont(sectionLabelFont);
-   mainToolboxLayout->addWidget(edgeOpsLabel);
+   edgeOpsLayout->addWidget(edgeOpsLabel);
 
    QHBoxLayout* toggleLayout = new QHBoxLayout(toolBox_);
    toggleLayout->setSpacing(5);
@@ -44,10 +47,10 @@ void MeshCut::initializePlugin()
    drawButton_->setCheckable(true);
    toggleLayout->addWidget(drawButton_);
 
-   mainToolboxLayout->addItem(toggleLayout);
+   edgeOpsLayout->addItem(toggleLayout);
 
    clampToEdgeCheckBox_ = new QCheckBox("Clamp drawn curve to mesh edges", toolBox_);
-   mainToolboxLayout->addWidget(clampToEdgeCheckBox_);
+   edgeOpsLayout->addWidget(clampToEdgeCheckBox_);
 
    /// TODO: make this possible first
 //   directCutCheckBox_ = new QCheckBox("Cut directly as the mouse clicks", toolBox_);
@@ -55,25 +58,27 @@ void MeshCut::initializePlugin()
 
    QPushButton* cutButton = new QPushButton("&Cut selected", toolBox_);
    cutButton->setToolTip("Cut selected edges.");
-   mainToolboxLayout->addWidget(cutButton);
+   edgeOpsLayout->addWidget(cutButton);
 
    independantCutsCheckBox_ = new QCheckBox("Don't split vertices", toolBox_);
-   mainToolboxLayout->addWidget(independantCutsCheckBox_);
+   edgeOpsLayout->addWidget(independantCutsCheckBox_);
+
+   edgeOpsGroup->setLayout(edgeOpsLayout);
+   mainToolboxLayout->addWidget(edgeOpsGroup);
+   //*******
 
    //******* Vertex ops
-   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
-   QFrame* lineSectionSeparator0 = new QFrame();
-   lineSectionSeparator0->setFrameShape(QFrame::HLine);
-   lineSectionSeparator0->setFrameShadow(QFrame::Sunken);
-   mainToolboxLayout->addWidget(lineSectionSeparator0);
+   mainToolboxLayout->addItem(new QSpacerItem(10, 5, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QVBoxLayout* vertexOpsLayout = new QVBoxLayout(toolBox_);
+   QGroupBox* vertexOpsGroup = new QGroupBox(toolBox_);
 
    QLabel* vertexOpsLabel = new QLabel("Vertex operations");
    vertexOpsLabel->setFont(sectionLabelFont);
-   mainToolboxLayout->addWidget(vertexOpsLabel);
+   vertexOpsLayout->addWidget(vertexOpsLabel);
 
    selectVerticesButton_ = new QPushButton("Select Vertices", toolBox_);
    selectVerticesButton_->setCheckable(true);
-   mainToolboxLayout->addWidget(selectVerticesButton_);
+   vertexOpsLayout->addWidget(selectVerticesButton_);
 
    QHBoxLayout* vertexActionButtonsLayout = new QHBoxLayout(toolBox_);
    vertexActionButtonsLayout->setSpacing(5);
@@ -83,27 +88,35 @@ void MeshCut::initializePlugin()
    QPushButton* splitVertexButton = new QPushButton("S&plit selected", toolBox_);
    splitVertexButton->setToolTip("Split vertices that are adjacent to two cuts");
    vertexActionButtonsLayout->addWidget(splitVertexButton);
-   mainToolboxLayout->addItem(vertexActionButtonsLayout);
+   vertexOpsLayout->addItem(vertexActionButtonsLayout);
+
+   vertexOpsGroup->setLayout(vertexOpsLayout);
+   mainToolboxLayout->addWidget(vertexOpsGroup);
+   //*******
 
    //******* Mesh ops
-   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
-   QFrame* lineSectionSeparator1 = new QFrame();
-   lineSectionSeparator1->setFrameShape(QFrame::HLine);
-   lineSectionSeparator1->setFrameShadow(QFrame::Sunken);
-   mainToolboxLayout->addWidget(lineSectionSeparator1);
+   mainToolboxLayout->addItem(new QSpacerItem(10, 5, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QVBoxLayout* meshOpsLayout = new QVBoxLayout(toolBox_);
+   QGroupBox* meshOpsGroup = new QGroupBox(toolBox_);
 
    QLabel* meshOpsLabel = new QLabel("Mesh operations");
    meshOpsLabel->setFont(sectionLabelFont);
-   mainToolboxLayout->addWidget(meshOpsLabel);
+   meshOpsLayout->addWidget(meshOpsLabel);
 
    QPushButton* combineMeshesButton = new QPushButton("Combine target meshes", toolBox_);
    combineMeshesButton->setToolTip("Combine all target meshes into one. CAUTION: this is not reversible.");
-   mainToolboxLayout->addWidget(combineMeshesButton);
+   meshOpsLayout->addWidget(combineMeshesButton);
+
+   // Add group to layout
+   meshOpsGroup->setLayout(meshOpsLayout);
+   mainToolboxLayout->addWidget(meshOpsGroup);
+   //*******
 
    // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
    QFrame* lineSeparator0 = new QFrame();
    lineSeparator0->setFrameShape(QFrame::HLine);
+   lineSeparator0->setFrameShadow(QFrame::Sunken);
    mainToolboxLayout->addWidget(lineSeparator0);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,6 +143,10 @@ void MeshCut::initializePlugin()
    mainToolboxLayout->addWidget(rigidifyButton);
 
    /// Constraints
+   mainToolboxLayout->addItem(new QSpacerItem(10, 10, QSizePolicy::Expanding, QSizePolicy::Fixed));
+   QVBoxLayout* constraintsLayout = new QVBoxLayout(toolBox_);
+   QGroupBox* constraintsGroup = new QGroupBox("Constraints", toolBox_);
+
    // Titles
    QHBoxLayout* constraintTitlesLayout = new QHBoxLayout(toolBox_);
    constraintTitlesLayout->setSpacing(5);
@@ -138,18 +155,14 @@ void MeshCut::initializePlugin()
    constraintTypeLabel->setAlignment(Qt::AlignLeft);
    constraintTitlesLayout->addWidget(constraintTypeLabel);
    QLabel* constraintMinLabel = new QLabel(toolBox_);
-   constraintMinLabel->setText("Min");
+   constraintMinLabel->setText("Parameters");
    constraintMinLabel->setAlignment(Qt::AlignCenter);
    constraintTitlesLayout->addWidget(constraintMinLabel);
-   QLabel* constraintMaxLabel = new QLabel(toolBox_);
-   constraintMaxLabel->setText("Max");
-   constraintMaxLabel->setAlignment(Qt::AlignCenter);
-   constraintTitlesLayout->addWidget(constraintMaxLabel);
    QLabel* constraintWeightLabel = new QLabel(toolBox_);
    constraintWeightLabel->setText("Weight");
    constraintWeightLabel->setAlignment(Qt::AlignRight);
    constraintTitlesLayout->addWidget(constraintWeightLabel);
-   mainToolboxLayout->addItem(constraintTitlesLayout);
+   constraintsLayout->addItem(constraintTitlesLayout);
 
    // Edge strain
    QHBoxLayout* edgeStrainLayout = new QHBoxLayout(toolBox_);
@@ -163,7 +176,7 @@ void MeshCut::initializePlugin()
    edgeStrainWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    edgeStrainWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    edgeStrainLayout->addWidget(edgeStrainWeightSpinBox_);
-   mainToolboxLayout->addItem(edgeStrainLayout);
+   constraintsLayout->addItem(edgeStrainLayout);
 
    // Triangle strain
    QHBoxLayout* triangleStrainLayout = new QHBoxLayout(toolBox_);
@@ -177,7 +190,7 @@ void MeshCut::initializePlugin()
    triangleStrainWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    triangleStrainWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    triangleStrainLayout->addWidget(triangleStrainWeightSpinBox_);
-   mainToolboxLayout->addItem(triangleStrainLayout);
+   constraintsLayout->addItem(triangleStrainLayout);
 
    // Area constraint
    QHBoxLayout* areaConstraintLayout = new QHBoxLayout(toolBox_);
@@ -202,7 +215,7 @@ void MeshCut::initializePlugin()
    areaConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    areaConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    areaConstraintLayout->addWidget(areaConstraintWeightSpinBox_);
-   mainToolboxLayout->addItem(areaConstraintLayout);
+   constraintsLayout->addItem(areaConstraintLayout);
 
    // Bending constraint
    QHBoxLayout* bendingConstraintLayout = new QHBoxLayout(toolBox_);
@@ -227,7 +240,7 @@ void MeshCut::initializePlugin()
    bendingConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    bendingConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    bendingConstraintLayout->addWidget(bendingConstraintWeightSpinBox_);
-   mainToolboxLayout->addItem(bendingConstraintLayout);
+   constraintsLayout->addItem(bendingConstraintLayout);
 
    // Rectangle constraint
    QHBoxLayout* rectConstraintLayout = new QHBoxLayout(toolBox_);
@@ -241,7 +254,7 @@ void MeshCut::initializePlugin()
    rectConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    rectConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    rectConstraintLayout->addWidget(rectConstraintWeightSpinBox_);
-   mainToolboxLayout->addItem(rectConstraintLayout);
+   constraintsLayout->addItem(rectConstraintLayout);
 
    // Angle constraint
    QHBoxLayout* angleConstraintLayout = new QHBoxLayout(toolBox_);
@@ -266,26 +279,34 @@ void MeshCut::initializePlugin()
    angleConstraintWeightSpinBox_->setSingleStep(WEIGHT_STEP);
    angleConstraintWeightSpinBox_->setValue(WEIGHT_DEFAULT);
    angleConstraintLayout->addWidget(angleConstraintWeightSpinBox_);
-   mainToolboxLayout->addItem(angleConstraintLayout);
+   constraintsLayout->addItem(angleConstraintLayout);
+
+   // Add group to layout
+   constraintsGroup->setLayout(constraintsLayout);
+   mainToolboxLayout->addWidget(constraintsGroup);
 
 
-   // Instantaneous update
-   QHBoxLayout* updateNowLayout = new QHBoxLayout(toolBox_);
-   updateNowLayout->setSpacing(5);
-   QPushButton* updateButton = new QPushButton("Update now", toolBox_);
-   updateNowLayout->addWidget(updateButton);
+   // Iteration number
+   QHBoxLayout* nIterationsLayout = new QHBoxLayout(toolBox_);
+   nIterationsLayout->setSpacing(5);
+   nIterationsLayout->addWidget(new QLabel("Number of iterations:", toolBox_));
    nSolverIterationsSpinBox_ = new QSpinBox(toolBox_);
    nSolverIterationsSpinBox_->setMinimum(1);
    nSolverIterationsSpinBox_->setMaximum(100);
    nSolverIterationsSpinBox_->setSingleStep(1);
    nSolverIterationsSpinBox_->setValue(10);
-   updateNowLayout->addWidget(nSolverIterationsSpinBox_);
-   mainToolboxLayout->addItem(updateNowLayout);
+   nIterationsLayout->addWidget(nSolverIterationsSpinBox_);
+   mainToolboxLayout->addItem(nIterationsLayout);
+
+   // Instantatneous update
+   QPushButton* updateButton = new QPushButton("Update now", toolBox_);
+   mainToolboxLayout->addWidget(updateButton);
 
    // Line separator between tools
    mainToolboxLayout->addItem(new QSpacerItem(10, 20, QSizePolicy::Expanding, QSizePolicy::Fixed));
    QFrame* lineSeparator1 = new QFrame();
    lineSeparator1->setFrameShape(QFrame::HLine);
+   lineSeparator1->setFrameShadow(QFrame::Sunken);
    mainToolboxLayout->addWidget(lineSeparator1);
 
    ////////////////////////////////////////////////////////////////////////////////////////////////
