@@ -152,15 +152,21 @@ void MeshCut::initializePlugin()
    constraintTitlesLayout->setSpacing(5);
    QLabel* constraintTypeLabel = new QLabel(toolBox_);
    constraintTypeLabel->setText("Constraint type");
-   constraintTypeLabel->setAlignment(Qt::AlignLeft);
+   constraintTypeLabel->setAlignment(Qt::AlignCenter);
    constraintTitlesLayout->addWidget(constraintTypeLabel);
+   QFrame* constraintTitleSeparator0 = new QFrame(toolBox_);
+   constraintTitleSeparator0->setFrameShape(QFrame::VLine);
+   constraintTitlesLayout->addWidget(constraintTitleSeparator0);
    QLabel* constraintMinLabel = new QLabel(toolBox_);
    constraintMinLabel->setText("Parameters");
    constraintMinLabel->setAlignment(Qt::AlignCenter);
    constraintTitlesLayout->addWidget(constraintMinLabel);
+   QFrame* constraintTitleSeparator1 = new QFrame(toolBox_);
+   constraintTitleSeparator1->setFrameShape(QFrame::VLine);
+   constraintTitlesLayout->addWidget(constraintTitleSeparator1);
    QLabel* constraintWeightLabel = new QLabel(toolBox_);
    constraintWeightLabel->setText("Weight");
-   constraintWeightLabel->setAlignment(Qt::AlignRight);
+   constraintWeightLabel->setAlignment(Qt::AlignCenter);
    constraintTitlesLayout->addWidget(constraintWeightLabel);
    constraintsLayout->addItem(constraintTitlesLayout);
 
