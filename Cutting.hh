@@ -336,17 +336,13 @@ template<typename MeshT>
 void Cutting::clampAndSelect(MeshT& mesh) {
    if (recorded_path_.size() < 2) return;
 
-   // These are important safeguards to prevent a path from oscillating to infinity when reconstructing from a jump
-   bool jumping = false;
+   // This is an important safeguard to prevent a path from oscillating indefinitely when reconstructing from a jump
    std::set<int> jump_visited;
 
    // Get first point of curve
    v_edges_to_select_.push(std::get<TUPLE_VERTEX>(recorded_path_.front()));
 
    while (recorded_path_.size() > 1) {
-      // Reset jump memory
-      if (!jumping) jump_visited.clear();
-
       // Advance until there is a change of vertex
       PathPoint curr_point = recorded_path_.front();
       recorded_path_.pop_front();
@@ -363,6 +359,9 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       int next_edge = std::get<TUPLE_EDGE>(next_point);
       int next_path_vertex = std::get<TUPLE_VERTEX>(next_point);
 
+      // Reset jump memory
+      if (curr_edge != -1) jump_visited.clear();
+
       /// Check if current edge is connected to current vertex, if not skip.
       /// This is due to obtuse or right triangles, where the path gets closer to the opposite vertex when following an edge.
       bool isConnected = false;
@@ -377,8 +376,6 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       // Normal vertex registration
       if (curr_edge == next_edge) {
          v_edges_to_select_.push(next_path_vertex);
-
-         jumping = false;
       }
       // Jump
       else {
@@ -407,8 +404,6 @@ void Cutting::clampAndSelect(MeshT& mesh) {
          v_edges_to_select_.push(candidate_next_vertex_idx);
          // Next iteration's current vertex is this iteration's current candidate
          recorded_path_.push_front(std::make_tuple(ACG::Vec3d(), -1, -1, candidate_next_vertex_idx));
-
-         jumping = true;
       }
    }
 
