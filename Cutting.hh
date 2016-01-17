@@ -97,7 +97,7 @@ public:
    template<typename MeshT>
    void splitVertex(typename MeshT::VertexHandle vh, MeshT& mesh);
 
-   // Merge two vertices
+   // Merge a pair of vertices
    template<typename MeshT>
    void mergeVertices(typename MeshT::VertexHandle vh0, typename MeshT::VertexHandle vh1, MeshT& mesh);
 
@@ -152,7 +152,7 @@ public:
 
 
 /** \brief Finds intersection point on segment by halfline
- * Thanks to Ronald Goldman, on "Intersection of two lines in three-space" in Graphics Gems 1st ed., p.304
+ * Concept adapted from "Intersection of two lines in three-space", by Ronald Goldman in Graphics Gems 1st ed., p.304
  *
  * Find point of intersection on segment [q0, q1] by half-line [p0, p1).
  * If an intersection is found, intersection_point is set to the point of intersection.
@@ -356,22 +356,36 @@ void Cutting::clampAndSelect(MeshT& mesh) {
 
       // Get the two points and their closest edge
       int curr_edge = std::get<TUPLE_EDGE>(curr_point);
+      int curr_path_vertex = std::get<TUPLE_VERTEX>(curr_point);
       int next_edge = std::get<TUPLE_EDGE>(next_point);
       int next_path_vertex = std::get<TUPLE_VERTEX>(next_point);
 
       // Reset jump memory
       if (curr_edge != -1) jump_visited.clear();
 
-      /// Check if current edge is connected to current vertex, if not skip.
+      /// Check if next edge is connected to next vertex, if not skip.
       /// This is due to obtuse or right triangles, where the path gets closer to the opposite vertex when following an edge.
       bool isConnected = false;
+      bool isAdjacent = false;
       typename MeshT::VertexEdgeIter ve_it = mesh.ve_iter(mesh.vertex_handle(next_path_vertex));
       for (; ve_it.is_valid(); ++ve_it) {
          if (ve_it->idx() == next_edge) {
             isConnected = true;
+            if (mesh.to_vertex_handle(mesh.halfedge_handle(*ve_it, 0)).idx() == curr_path_vertex ||
+                mesh.from_vertex_handle(mesh.halfedge_handle(*ve_it, 0)).idx() == curr_path_vertex) {
+               isAdjacent = true;
+            }
          }
       }
-      if (!isConnected) continue;
+      if (!isConnected) {
+         if (isAdjacent) {
+            continue;
+         } else {
+            // If current and next vertices aren't adjacent, we need to find a path between them
+            curr_edge = -1;
+            next_edge = -2;
+         }
+      }
 
       // Normal vertex registration
       if (curr_edge == next_edge) {

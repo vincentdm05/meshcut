@@ -76,7 +76,7 @@ void MeshCut::initializePlugin()
    vertexOpsLabel->setFont(sectionLabelFont);
    vertexOpsLayout->addWidget(vertexOpsLabel);
 
-   selectVerticesButton_ = new QPushButton("Select Vertices", toolBox_);
+   selectVerticesButton_ = new QPushButton("Select vertices", toolBox_);
    selectVerticesButton_->setCheckable(true);
    vertexOpsLayout->addWidget(selectVerticesButton_);
 
@@ -300,7 +300,7 @@ void MeshCut::initializePlugin()
    nSolverIterationsSpinBox_->setMinimum(1);
    nSolverIterationsSpinBox_->setMaximum(100);
    nSolverIterationsSpinBox_->setSingleStep(1);
-   nSolverIterationsSpinBox_->setValue(10);
+   nSolverIterationsSpinBox_->setValue(N_ITERATIONS_DEFAULT);
    nIterationsLayout->addWidget(nSolverIterationsSpinBox_);
    mainToolboxLayout->addItem(nIterationsLayout);
 
@@ -762,9 +762,9 @@ void MeshCut::selectEdge(QMouseEvent* _event) {
    }
 }
 
-/** \brief Draw a line and select the created edges
+/** \brief Draw a line and select the underlying edges
  *
- * At each edge crossing, save the current state of component variables,
+ * At each edge crossing, save the current state of active components,
  * perform a split and selection (if necessary), and advance.
  *
  * @param _event The mouse click
@@ -781,6 +781,9 @@ void MeshCut::mouseDraw(QMouseEvent* _event) {
             showPath(std::get<TUPLE_POINT>(cutting_tools_->getPathPoint(PATH_BACK)), active_hit_point_, object);
          }
          cutting_tools_->addPathPoint(std::make_tuple(active_hit_point_, active_face_, active_edge_, active_vertex_));
+
+         /// DEBUG
+//         std::cout << "path: [" << active_hit_point_[0] << "," << active_hit_point_[1] << "," << active_hit_point_[2] << "]; " << active_face_ << ", " << active_edge_ << "; " << active_vertex_ << std::endl;
 
 //         // If real time cutting is selected, apply after two face-overs
 //         if (directCutCheckBox_->isChecked() && cutting_tools_->faceOvers() > 2) {

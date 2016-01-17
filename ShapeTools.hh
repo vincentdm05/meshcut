@@ -7,7 +7,7 @@
 #include <Solver.h>
 #include <Constraint.h>
 
-#define N_ITERATIONS_DEFAULT 10
+#define N_ITERATIONS_DEFAULT 50
 
 #define WEIGHT_MIN 0.0
 #define WEIGHT_MAX 10.0

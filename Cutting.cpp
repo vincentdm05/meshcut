@@ -23,7 +23,7 @@ void Cutting::markForSplit(BaseObjectData* object) {
       if (recorded_path_.size() < 2 && std::get<TUPLE_FACE>(next_point) == std::get<TUPLE_FACE>(curr_point)) break;
 
       /// TODO: Find and correct bug so that we don't need that
-      /// It is a terrible hack and we should not rely on this
+      /// It is a terrible hack and we should not have to rely on this. ///
       infinite_loop_breaker[0] = infinite_loop_breaker[1];
       infinite_loop_breaker[1] = infinite_loop_breaker[2];
       infinite_loop_breaker[2] = std::make_pair(std::get<TUPLE_FACE>(curr_point), std::get<TUPLE_FACE>(next_point));
@@ -80,7 +80,7 @@ void Cutting::markForSplit(BaseObjectData* object) {
              * p0 is the point inside the face, corresponding here to curr_hit_point
              * p1 is the projected point outside the face. It is projected onto the plane defined by the
              *    face on which p0 resides and together with p0 define a line we wish to intersect with
-             *    one of the faces of the current face.
+             *    one of the edges of the current face.
              */
             // Project end point to plane defined by triangle under first point
             ACG::Vec3d projected_end = projectToFacePlane(next_hit_point, std::get<TUPLE_FACE>(curr_point), mesh);
