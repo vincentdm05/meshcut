@@ -29,7 +29,7 @@ private:
 
    // Select edges that have been marked
    template<typename MeshT>
-   void selectMarkedEdges(MeshT& mesh);
+   void selectPath(MeshT& mesh);
 
    // Determine whether a point lies on a segment
    template<typename Vec3Type>
@@ -61,7 +61,7 @@ private:
    Path recorded_path_;
 
    // Vertices of new edges to select
-   std::queue<int> v_edges_to_select_;
+   std::queue<int> v_path_to_select_;
 
    // Queue of edge handle and crossing point pairs
    std::queue<std::pair<int,ACG::Vec3d> > edges_to_split_;
@@ -70,7 +70,7 @@ private:
    unsigned int face_overs_;
 
 public:
-   Cutting() : recorded_path_(0), v_edges_to_select_(), edges_to_split_(), face_overs_(0) {}
+   Cutting() : recorded_path_(0), v_path_to_select_(), edges_to_split_(), face_overs_(0) {}
    ~Cutting(){}
 
    // Draw closest approximation of drawn curve on mesh
@@ -270,8 +270,8 @@ void Cutting::splitAndSelect(MeshT &mesh) {
       // Manage case where no split is needed
       if (edge == -1) {
          /// TODO: segfault here
-         int v_idx = closest_connected_vertex(v_edges_to_select_.back(), point, mesh);
-         v_edges_to_select_.push(v_idx);
+         int v_idx = closest_connected_vertex(v_path_to_select_.back(), point, mesh);
+         v_path_to_select_.push(v_idx);
          edges_to_split_.pop();
          continue;
       }
@@ -304,7 +304,7 @@ void Cutting::splitAndSelect(MeshT &mesh) {
       typename MeshT::VertexHandle vh = mesh.add_vertex(point);
       mesh.split(mesh.edge_handle(edge_to_split), vh);
       --face_overs_;
-      v_edges_to_select_.push(vh.idx());
+      v_path_to_select_.push(vh.idx());
 
       // Store index of newly created edge
       /// Assumptions: a new edge has the latest index; TriMesh split performs between 1 and 3
@@ -326,7 +326,7 @@ void Cutting::splitAndSelect(MeshT &mesh) {
    mesh.update_normals();
 
    // Select
-   selectMarkedEdges(mesh);
+   selectPath(mesh);
 }
 
 /** \brief Clamp curve to closest edges and select resulting path
@@ -334,13 +334,16 @@ void Cutting::splitAndSelect(MeshT &mesh) {
  */
 template<typename MeshT>
 void Cutting::clampAndSelect(MeshT& mesh) {
-   if (recorded_path_.size() < 2) return;
+   if (recorded_path_.size() < 2) {
+      recorded_path_.clear();
+      return;
+   }
 
    // This is an important safeguard to prevent a path from oscillating indefinitely when reconstructing from a jump
    std::set<int> jump_visited;
 
    // Get first point of curve
-   v_edges_to_select_.push(std::get<TUPLE_VERTEX>(recorded_path_.front()));
+   v_path_to_select_.push(std::get<TUPLE_VERTEX>(recorded_path_.front()));
 
    while (recorded_path_.size() > 1) {
       // Advance until there is a change of vertex
@@ -356,7 +359,6 @@ void Cutting::clampAndSelect(MeshT& mesh) {
 
       // Get the two points and their closest edge
       int curr_edge = std::get<TUPLE_EDGE>(curr_point);
-      int curr_path_vertex = std::get<TUPLE_VERTEX>(curr_point);
       int next_edge = std::get<TUPLE_EDGE>(next_point);
       int next_path_vertex = std::get<TUPLE_VERTEX>(next_point);
 
@@ -366,30 +368,19 @@ void Cutting::clampAndSelect(MeshT& mesh) {
       /// Check if next edge is connected to next vertex, if not skip.
       /// This is due to obtuse or right triangles, where the path gets closer to the opposite vertex when following an edge.
       bool isConnected = false;
-      bool isAdjacent = false;
       typename MeshT::VertexEdgeIter ve_it = mesh.ve_iter(mesh.vertex_handle(next_path_vertex));
       for (; ve_it.is_valid(); ++ve_it) {
          if (ve_it->idx() == next_edge) {
             isConnected = true;
-            if (mesh.to_vertex_handle(mesh.halfedge_handle(*ve_it, 0)).idx() == curr_path_vertex ||
-                mesh.from_vertex_handle(mesh.halfedge_handle(*ve_it, 0)).idx() == curr_path_vertex) {
-               isAdjacent = true;
-            }
          }
       }
       if (!isConnected) {
-         if (isAdjacent) {
-            continue;
-         } else {
-            // If current and next vertices aren't adjacent, we need to find a path between them
-            curr_edge = -1;
-            next_edge = -2;
-         }
+         continue;
       }
 
-      // Normal vertex registration
+      // Vertex path registration
       if (curr_edge == next_edge) {
-         v_edges_to_select_.push(next_path_vertex);
+         v_path_to_select_.push(next_path_vertex);
       }
       // Jump
       else {
@@ -415,38 +406,72 @@ void Cutting::clampAndSelect(MeshT& mesh) {
          if (min_dist == std::numeric_limits<double>::max()) continue;
 
          // Record vertex
-         v_edges_to_select_.push(candidate_next_vertex_idx);
+         v_path_to_select_.push(candidate_next_vertex_idx);
          // Next iteration's current vertex is this iteration's current candidate
          recorded_path_.push_front(std::make_tuple(ACG::Vec3d(), -1, -1, candidate_next_vertex_idx));
       }
    }
 
+   recorded_path_.clear();
+
    // Select
-   selectMarkedEdges(mesh);
+   selectPath(mesh);
 }
 
-/** \brief Select edges that have been marked
- * Go through the list v_edges_to_select_, connect and select found edges
+/** \brief Select edges on the path that has been marked
+ * Go through the list v_path_to_select_, connect and select found edges.
  *
  * @param mesh The mesh
  */
 template<typename MeshT>
-void Cutting::selectMarkedEdges(MeshT& mesh) {
-   if (v_edges_to_select_.size()<2) return;
+void Cutting::selectPath(MeshT& mesh) {
+   if (v_path_to_select_.size()<2) return;
 
-   int prev_vertex_at_split = -1;
-   while (!v_edges_to_select_.empty()) {
-      int curr_vertex_at_split = v_edges_to_select_.front();
-      if (prev_vertex_at_split != -1) {
+   int curr_vertex = -1;
+   while (!v_path_to_select_.empty()) {
+      int next_vertex = v_path_to_select_.front();
+      if (curr_vertex != -1) {
          //Find connecting edge and select
-         int edge_to_select = edge_between(mesh.vertex_handle(prev_vertex_at_split),
-                                           mesh.vertex_handle(curr_vertex_at_split), mesh);
-         if (edge_to_select != -1)
+         int edge_to_select = edge_between(mesh.vertex_handle(curr_vertex),
+                                           mesh.vertex_handle(next_vertex), mesh);
+         if (edge_to_select != -1) {
             mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
-      }
-      prev_vertex_at_split = curr_vertex_at_split;
+         } else {
+            std::set<int> v_visited;
+            while (curr_vertex != next_vertex) {
+               v_visited.insert(curr_vertex);
 
-      v_edges_to_select_.pop();
+               // Find closest current vertex 1-ring neighbour to next vertex
+               ACG::Vec3d next_v_point = mesh.point(mesh.vertex_handle(next_vertex));
+               typename MeshT::VertexVertexIter vv_it = mesh.vv_iter(mesh.vertex_handle(curr_vertex));
+               double min_dist = std::numeric_limits<double>::max();
+               int candidate_next_vertex_idx = -1;
+               for (; vv_it.is_valid(); ++vv_it) {
+                  // Avoid falling twice on the same vertex during the same jump
+                  if (v_visited.find(vv_it->idx()) == v_visited.end()) {
+                     double dist = (next_v_point - mesh.point(*vv_it)).norm();
+                     if (dist < min_dist) {
+                        min_dist = dist;
+                        candidate_next_vertex_idx = (*vv_it).idx();
+                     }
+                  }
+               }
+
+               // Connect
+               if (candidate_next_vertex_idx != -1) {
+                  edge_to_select = edge_between(mesh.vertex_handle(curr_vertex),
+                                                mesh.vertex_handle(candidate_next_vertex_idx), mesh);
+                  mesh.status(mesh.edge_handle(edge_to_select)).set_selected(true);
+                  curr_vertex = candidate_next_vertex_idx;
+               } else {
+                  break;
+               }
+            }
+         }
+      }
+      curr_vertex = next_vertex;
+
+      v_path_to_select_.pop();
    }
 }
 
