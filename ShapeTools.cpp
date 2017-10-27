@@ -70,7 +70,7 @@ void ShapeTools::setConstraints() {
       for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
       {
          v_ids.clear();
-         for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+         for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it.is_valid(); ++fv_it)
             v_ids.push_back((*fv_it).idx());
 
          auto c = ShapeOp::Constraint::shapeConstraintFactory("TriangleStrain", v_ids, triangleStrainWeight_, solver_->getPoints());
@@ -85,7 +85,7 @@ void ShapeTools::setConstraints() {
          for (TriMesh::FaceIter f_it = triMesh_->faces_begin(); f_it != triMesh_->faces_end(); ++f_it)
          {
             v_ids.clear();
-            for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it; ++fv_it)
+            for (TriMesh::FaceVertexIter fv_it = triMesh_->fv_iter(*f_it); fv_it.is_valid(); ++fv_it)
                v_ids.push_back((*fv_it).idx());
 
             auto c = std::make_shared<ShapeOp::AreaConstraint>(v_ids, areaConstraintWeight_, solver_->getPoints());
@@ -103,7 +103,7 @@ void ShapeTools::setConstraints() {
             size_t n_vertices = 0;
             PolyMesh::FaceVertexIter fv_it = polyMesh_->fv_iter(*f_it);
             int first_v_idx = (*fv_it).idx();
-            for (; fv_it; ++fv_it) {
+            for (; fv_it.is_valid(); ++fv_it) {
                v_ids.push_back((*fv_it).idx());
                ++n_vertices;
 
@@ -160,7 +160,7 @@ void ShapeTools::setConstraints() {
       for (PolyMesh::FaceIter f_it = polyMesh_->faces_begin(); f_it != polyMesh_->faces_end(); ++f_it) {
          v_ids.clear();
          if (polyMesh_->valence(*f_it) == 4) {
-            for (PolyMesh::FaceVertexIter fv_it = polyMesh_->fv_iter(*f_it); fv_it; ++fv_it) {
+            for (PolyMesh::FaceVertexIter fv_it = polyMesh_->fv_iter(*f_it); fv_it.is_valid(); ++fv_it) {
                v_ids.push_back(fv_it->idx());
             }
 
@@ -181,7 +181,7 @@ void ShapeTools::setConstraints() {
             v_ids.clear();
 
             TriMesh::VertexIHalfedgeIter vih_it = triMesh_->vih_iter(*v_it);
-            for (; vih_it; ++vih_it) {
+            for (; vih_it.is_valid(); ++vih_it) {
                if (triMesh_->is_boundary(*vih_it)) {
                   TriMesh::VertexHandle vh0, vh1, vh2;
                   vh0 = triMesh_->to_vertex_handle(*vih_it);
@@ -228,7 +228,7 @@ void ShapeTools::setConstraints() {
             v_ids.clear();
 
             PolyMesh::VertexIHalfedgeIter vih_it = polyMesh_->vih_iter(*v_it);
-            for (; vih_it; ++vih_it) {
+            for (; vih_it.is_valid(); ++vih_it) {
                if (polyMesh_->is_boundary(*vih_it)) {
                   PolyMesh::VertexHandle vh0, vh1, vh2;
                   vh0 = polyMesh_->to_vertex_handle(*vih_it);

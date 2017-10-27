@@ -105,7 +105,7 @@ void Cutting::markForSplit(BaseObjectData* object) {
                TriMesh::VertexFaceIter vfit = mesh.vf_iter(mesh.vertex_handle(v_idx));
                TriMesh::VertexHandle vh0 = *vvit; ++vvit;
                Eigen::Vector3d end_point(next_hit_point[0], next_hit_point[1], next_hit_point[2]);
-               for (; vvit && vfit; ++vvit) {
+               for (; vvit.is_valid() && vfit.is_valid(); ++vvit) {
                   TriMesh::VertexHandle vh1 = *vvit;
                   Eigen::Vector3d proj_end = projectToFacePlane(end_point, (*vfit).idx(), mesh);
 
@@ -152,7 +152,7 @@ void Cutting::markForSplit(BaseObjectData* object) {
             ACG::Vec3d face_centroid = mesh.calc_face_centroid(mesh.face_handle(next_face_idx));
             TriMesh::FaceVertexIter fv_it = mesh.fv_iter(mesh.face_handle(next_face_idx));
             // Intersect the line with segments going from face centroid to face vertices
-            for (; fv_it; ++fv_it) {
+            for (; fv_it.is_valid(); ++fv_it) {
                ACG::Vec3d edge_point = mesh.point(*fv_it);
 
                // As soon as an edge is crossed, stop: we only need one

@@ -847,9 +847,9 @@ Vec3Type Cutting::findOutgoingFaceCrossing(const Vec3Type _point_inside, const V
    Eigen::Vector3d point_outside(_point_outside[0], _point_outside[1], _point_outside[2]);
 
    // Find crossed edge and point
-   Eigen::Vector3d intersection_point(0.0);
+   Eigen::Vector3d intersection_point(0.0, 0.0, 0.0);
    typename MeshT::FaceHalfedgeIter fh_it = mesh.fh_iter(mesh.face_handle(_face_idx));
-   for (; fh_it; ++fh_it) {
+   for (; fh_it.is_valid(); ++fh_it) {
       typename MeshT::Point point_from = mesh.point(mesh.from_vertex_handle(*fh_it));
       Eigen::Vector3d q0(point_from[0], point_from[1], point_from[2]);
       typename MeshT::Point point_to = mesh.point(mesh.to_vertex_handle(*fh_it));
@@ -926,7 +926,7 @@ void Cutting::combineMeshes(MeshT0* mesh0, MeshT1* mesh1) {
       typename MeshT1::FaceIter f_it, f_end(mesh1->faces_end());
       for (f_it = mesh1->faces_begin(); f_it!=f_end; ++f_it) {
          typename MeshT1::FaceVertexIter fv_it = mesh1->fv_iter(*f_it);
-         for (; fv_it; ++fv_it) {
+         for (; fv_it.is_valid(); ++fv_it) {
             face.push_back(vmap[*fv_it]);
          }
          mesh0->add_face(face);

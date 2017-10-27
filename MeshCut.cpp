@@ -6,8 +6,6 @@
 #define DRAW_CUT_PICKMODE "MeshCut: Draw cut"
 #define SELECT_VERTICES_PICKMODE "MeshCut: Vertex select"
 
-Q_EXPORT_PLUGIN2( meshCut , MeshCut );
-
 /** \brief Initialize plugin
  *
  */
@@ -540,7 +538,7 @@ void MeshCut::slotRestored(int _objectid) {
  * @param _event the mouse click event
  */
 BaseObjectData *MeshCut::setActiveElements(QPoint _pos) {
-   unsigned int node_idx, target_idx;
+   size_t node_idx, target_idx;
    ACG::Vec3d hit_point;
    if (PluginFunctions::scenegraphPick(ACG::SceneGraph::PICK_FACE, _pos, node_idx, target_idx, &hit_point)) {
       active_hit_point_ = ACG::Vec3d(hit_point);
@@ -1460,7 +1458,9 @@ void MeshCut::slotTriGen() {
    }
 }
 
-
+#if QT_VERSION < 0x050000
+  Q_EXPORT_PLUGIN2( meshCut , MeshCut );
+#endif
 
 
 

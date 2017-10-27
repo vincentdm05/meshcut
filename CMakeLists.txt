@@ -1,9 +1,12 @@
 include (plugin)
-openflipper_plugin ( INSTALLDATA Icons )
+openflipper_plugin ( INSTALLDATA Icons
+                    TYPES POLYMESH TRIANGLEMESH )
 
 # For CGAL and Boost
 set(CMAKE_MODULE_LINKER_FLAGS "-lboost_system -lCGAL -lCGAL_Core ${CMAKE_MODULE_LINKER_FLAGS}")
-set(CMAKE_CXX_FLAGS "-frounding-math ${CMAKE_CXX_FLAGS}")
+if(NOT "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
+    set(CMAKE_CXX_FLAGS "-frounding-math ${CMAKE_CXX_FLAGS}")
+endif()
 
 
 # Compiler flags
